@@ -1,0 +1,43 @@
+NOTE: Sometimes hardwareproblems might do that colorcodes are not visible. text is also dumped on serialport.
+
+Detecting Chipmem
+Black/Green
+
+Detected Chipmemerrors
+Green/Red
+
+BusError:
+Red/White
+
+AddressError
+Red/Purple
+
+Illegal Instruction
+Red/Cyan
+
+Division By Zero
+Red/Yellow
+
+Chk Instruction
+Red/Blue
+
+TrapV
+Black/White
+
+Priv Vil
+Black/Purple
+
+Trace
+Black/Cyan
+
+Unimplemented Intruction
+Black/Yellow
+
+No Memory detected:
+Green/Dark Green
+
+
+No Chipmem, Fastmem detected:
+Flashing bars on screen when chars is printed. Text output on Serialport 9600BPS
+Can also be forced by holding left mousebutton during poweron, if no fastmem, chipmem is used but no screen is turned on.
+

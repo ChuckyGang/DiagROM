@@ -1,0 +1,18 @@
+Some Codestructures:
+
+To setup a new menu:
+
+Menus  - Contains a list of pointers to the menu Items-structure, "Menunumber" is used to determine what menu to print. Begins with 0 for mainmenu.
+MenuCode - Contains a list of pointers to where executable code is located after same order as "menunumber"
+MenuKeys - Contains pointer to list of keyentries to trigger menuitems in same order as menunumber
+
+Menuitemsstructure:
+	Pointer to menuheadertext
+	Pointers to menuitemtexts
+	nullterminator tells end of menu.
+
+MenuCode:
+	Pointers to were the executeable code is in order from menu.
+
+MenuKeys:
+	one char telling what key to press to activate menuitem
