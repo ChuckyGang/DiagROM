@@ -38,6 +38,6 @@ Green/Dark Green
 
 
 No Chipmem, Fastmem detected:
-Flashing bars on screen when chars is printed. Text output on Serialport 9600BPS
+Flashing bars on screen when chars is printed. Text output on Serialport 9600BPS ONLY.
 Can also be forced by holding left mousebutton during poweron, if no fastmem, chipmem is used but no screen is turned on.
 

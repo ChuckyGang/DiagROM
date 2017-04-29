@@ -52,7 +52,7 @@ rom_base:	equ $f80000		; Originate as if data is in ROM
 ; Then some different modes for the assembler
 
 
-rommode =	0				; Set to 1 if to assemble as being in ROM
+rommode =	1				; Set to 1 if to assemble as being in ROM
 debug = 	0				; Set to 1 to enable some debugshit in code
 amiga = 	1 				; Set to 1 to create an amiga header to write the ROM to disk
 
@@ -6799,67 +6799,67 @@ DrawLine:
 	add.w	d4,d2
 	add.w	d4,d3
 
-	move.l	a1,d4	; Width in work register
-	mulu	d1,d4	;Y1 * byte per line
-	moveq	#-$10,d5	; No leading characters $f0
-	and.w	d0,d5	; Bottom four bits masked from x1
-	lsr.w	#3,d5	; Reminder divided by 8
-	add.w	d5,d4	; Y1 * bytes per line + x1/8
-	add.l	a0,d4	; Plus startong adress of the bitplanes
+	move.l	a1,d4			; Width in work register
+	mulu	d1,d4			;Y1 * byte per line
+	moveq	#-$10,d5		; No leading characters $f0
+	and.w	d0,d5			; Bottom four bits masked from x1
+	lsr.w	#3,d5			; Reminder divided by 8
+	add.w	d5,d4			; Y1 * bytes per line + x1/8
+	add.l	a0,d4			; Plus startong adress of the bitplanes
 
 	clr.l	d5
-	sub.w	d1,d3	; Y2-Y1 DeltaY from D3
-	roxl.b	#1,d5	; Shift leading char from DeltaY in D5
-	tst.w	d3	; Restore N-Flag
-	bge.s	.y2gy1	; When DeltaY positive, goto g2gy1
-	neg.w	d3	; DeltaY invert (if not positive)
+	sub.w	d1,d3			; Y2-Y1 DeltaY from D3
+	roxl.b	#1,d5			; Shift leading char from DeltaY in D5
+	tst.w	d3			; Restore N-Flag
+	bge.s	.y2gy1			; When DeltaY positive, goto g2gy1
+	neg.w	d3			; DeltaY invert (if not positive)
 
 .y2gy1:
-	sub.w	d0,d2	; X2-X1 DeltaX to D2
-	roxl.b	#1,d5	; move leading char in DeltaX to d5
-	tst.w	d2	; Restore N-Flag
-	bge.s	.x2gx1	; When Delta X positive
-	neg.w	d2	; DeltaX invert
+	sub.w	d0,d2			; X2-X1 DeltaX to D2
+	roxl.b	#1,d5			; move leading char in DeltaX to d5
+	tst.w	d2			; Restore N-Flag
+	bge.s	.x2gx1			; When Delta X positive
+	neg.w	d2			; DeltaX invert
 
 .x2gx1:
-	move.w	d3,d1	; DeltaY to d1
-	sub.w	d2,d1	; DeltaY-DeltaX
-	bge.s	.dygdx	; When DeltaY > DeltaX
-	exg	d2,d3	; Smaller delta goto d2
-.dygdx:
-	roxl.b	#1,d5	; D5 contains result of 3 comparisons
+	move.w	d3,d1			; DeltaY to d1
+	sub.w	d2,d1			; DeltaY-DeltaX
+	bge.s	.dygdx			; When DeltaY > DeltaX
+	exg	d2,d3			; Smaller delta goto d2
+.dygdx:	
+	roxl.b	#1,d5			; D5 contains result of 3 comparisons
 	lea	Octant_Table,a5
-	move.b	(a5,d5),d5	; Get matching octants
-	add.w	d2,d2	; Smaller Delta * 2
+	move.b	(a5,d5),d5		; Get matching octants
+	add.w	d2,d2			; Smaller Delta * 2
 
 	VBLT
 
-	move.w	d2,$dff062	;2*Smaller delta tp BLTBMOD
-	sub.w	d3,d2	; 2*smaööer delta - larger delta
-	ble.s	.signn1	;When 2*small delta > largedelta to signn1
+	move.w	d2,$dff062		;2*Smaller delta tp BLTBMOD
+	sub.w	d3,d2			; 2*smaller delta - larger delta
+	ble.s	.signn1			;When 2*small delta > largedelta to signn1
 
-	or.b	#$40,d5	;Sign flag set
+	or.b	#$40,d5			;Sign flag set
 .signn1:
-	move.w	d2,$dff052	; 2*smal delta - large delta in BLTAPTL
-	sub.w	d3,d2		; 2*smaller delta -2*larger delta
-	move.w	d2,$dff064	; tp BLTAMOD
+	move.w	d2,$dff052		; 2*smal delta - large delta in BLTAPTL
+	sub.w	d3,d2			; 2*smaller delta -2*larger delta
+	move.w	d2,$dff064		; tp BLTAMOD
 
-	move.w	#$8000,$dff074	; BLTADAT
-	move.w	a2,$dff072	; mask from a2 in BLTBDAT
-	move.w	#$ffff,$dff044 ; BLTAFWM
-	and.w	#$000f,d0	; Bottom 4 bits from X1
-	ror.w	#4,d0		; to START0-3
-	or.w	#$0bca,d0	; USEx and LFx set
-	move.w	d0,$dff040	; BLTCON0
-	move.w	d5,$dff042	; Octant ib blitter BLTCON1
-	move.l	d4,$dff048	; Start adress of line  BLTCPTH
-	move.l	d4,$dff054	; BLTDPTH
-	move.w	a1,$dff060	; Width of bitplanes i both BLTCMOD
-	move.w	a1,$dff066	; and BLTDMOD registers
+	move.w	#$8000,$dff074		; BLTADAT
+	move.w	a2,$dff072		; mask from a2 in BLTBDAT
+	move.w	#$ffff,$dff044		; BLTAFWM
+	and.w	#$000f,d0		; Bottom 4 bits from X1
+	ror.w	#4,d0			; to START0-3
+	or.w	#$0bca,d0		; USEx and LFx set
+	move.w	d0,$dff040		; BLTCON0
+	move.w	d5,$dff042		; Octant ib blitter BLTCON1
+	move.l	d4,$dff048		; Start adress of line  BLTCPTH
+	move.l	d4,$dff054		; BLTDPTH
+	move.w	a1,$dff060		; Width of bitplanes i both BLTCMOD
+	move.w	a1,$dff066		; and BLTDMOD registers
 
-	lsl.l	#6,d3	; Length * 64
-	addq.w	#2,d3	; Plus wodth=2
-	move.w	d3,$dff058	; set size and start blit
+	lsl.l	#6,d3			; Length * 64
+	addq.w	#2,d3			; Plus wodth=2
+	move.w	d3,$dff058		; set size and start blit
 	POP
 	rts
 
@@ -6929,18 +6929,17 @@ BlitterClear:
 	; D3 = Modulo
 	
 	PUSH
-	VBLT				;Wait for blitter to finish before using the blitter again
-	move.w	#$100,$dff040		;Use D,A Set minterm D=A
-	clr.w	$dff042			;O=BLTCON1
+	VBLT					;Wait for blitter to finish before using the blitter again
+	move.w	#$100,$dff040			;Use D,A Set minterm D=A
+	clr.w	$dff042				;O=BLTCON1
 	move.w	#$ffff,$dff044
 	move.w	#$ffff,$dff046
-	move.w	#$8040,$dff096		;Turn on blitter DMA
+	move.w	#$8040,$dff096			;Turn on blitter DMA
 	move.l	d0,$dff054
-	move.w	d3,$dff066		;Modulo D
+	move.w	d3,$dff066			;Modulo D
 	asl.l	#6,d1
 	add.l	d2,d1
-	move.w	d1,$dff058	;Set Size and start blitter
-;	move.w	#10*62+20,$dff058
+	move.w	d1,$dff058			;Set Size and start blitter
 	POP
 	rts
 
@@ -6998,14 +6997,9 @@ SystemInfoTest:
 	bsr	Print
 
 
-	lea	test,a0
-	bsr	Print
-
-
 	bsr	WaitButton
-	bsr	IRQCIAtestMenu
+	bra	MainMenu
 	
-
 
 
 ;------------------------------------------------------------------------------------------
@@ -7800,7 +7794,7 @@ RTCTest:
 	move.l	#13,d7
 .loop1:
 	clr.l	d0
-	move.b	(a1)+,d0				;aaa
+	move.b	(a1)+,d0
 	bsr	binstringbyte
 	move.l	#2,d1
 	bsr	Print
@@ -8088,7 +8082,7 @@ AutoConfig:					; Do Autoconfigmagic
 
 AutoConfigDetail:				; Do Autoconfigmagic
 	bsr	ClearScreen
-	lea	AutoConfTxt,a0
+	lea	AutoConfTxt2,a0
 	move.l	#4,d1
 	bsr	Print
 	move.b	#1,AutoConfMode-V(a6)		; Set that we want a more detailed autoconfig mode
@@ -8122,37 +8116,37 @@ ERT_MEMBIT		EQU	0
 ERT_MEMSIZE		EQU	3
 	
 			rsreset
-er_Type 		rs.b	1;Board type, size and flags
-er_Product		rs.b 1	;Product number, assigned by manufacturer
-er_Flags		rs.b 1 ;Flags
-er_Reserved03		rs.b 1 ;Must be zero ($ff inverted)
-er_Manufacturer 	rs.w 1;Unique ID,ASSIGNED BY COMMODORE-AMIGA!
-er_SerialNumber 	rs.l 1;Available for use by manufacturer
-er_InitDiagVec		rs.w 1;Offset to optional "DiagArea" structure
-er_Reserved0c		rs.b 1
-er_Reserved0d		rs.b 1
-er_Reserved0e		rs.b 1
-er_Reserved0f		rs.b 1
-ExpansionRom_SIZEOF	rs.b 0
+er_Type 		rs.b	1	;Board type, size and flags
+er_Product		rs.b	1	;Product number, assigned by manufacturer
+er_Flags		rs.b	1	;Flags
+er_Reserved03		rs.b	1	;Must be zero ($ff inverted)
+er_Manufacturer 	rs.w	1	;Unique ID,ASSIGNED BY COMMODORE-AMIGA!
+er_SerialNumber 	rs.l	1	;Available for use by manufacturer
+er_InitDiagVec		rs.w	1	;Offset to optional "DiagArea" structure
+er_Reserved0c		rs.b	1
+er_Reserved0d		rs.b	1
+er_Reserved0e		rs.b	1
+er_Reserved0f		rs.b	1
+ExpansionRom_SIZEOF	rs.b	0
 
 			rsreset
-ec_Interrupt		rs.b 1 ;Optional interrupt control register
-ec_Z3_HighBase		rs.b 1 ;Zorro III   : Bits 24-31 of config address
-ec_BaseAddress		rs.b 1 ;Zorro II/III: Bits 16-23 of config address
-ec_Shutup		rs.b 1 ;The system writes here to shut up a board
-ec_Reserved14		rs.b 1
-ec_Reserved15		rs.b 1
-ec_Reserved16		rs.b 1
-ec_Reserved17		rs.b 1
-ec_Reserved18		rs.b 1
-ec_Reserved19		rs.b 1
-ec_Reserved1a		rs.b 1
-ec_Reserved1b		rs.b 1
-ec_Reserved1c		rs.b 1
-ec_Reserved1d		rs.b 1
-ec_Reserved1e		rs.b 1
-ec_Reserved1f		rs.b 1
-ExpansionControl_SIZEOF rs.b 0
+ec_Interrupt		rs.b	1	;Optional interrupt control register
+ec_Z3_HighBase		rs.b	1	;Zorro III   : Bits 24-31 of config address
+ec_BaseAddress		rs.b	1	;Zorro II/III: Bits 16-23 of config address
+ec_Shutup		rs.b	1	;The system writes here to shut up a board
+ec_Reserved14		rs.b	1
+ec_Reserved15		rs.b	1
+ec_Reserved16		rs.b	1
+ec_Reserved17		rs.b	1
+ec_Reserved18		rs.b	1
+ec_Reserved19		rs.b	1
+ec_Reserved1a		rs.b	1
+ec_Reserved1b		rs.b	1
+ec_Reserved1c		rs.b	1
+ec_Reserved1d		rs.b	1
+ec_Reserved1e		rs.b	1
+ec_Reserved1f		rs.b	1
+ExpansionControl_SIZEOF rs.b	0
 
 
 DumpD0
@@ -8170,19 +8164,20 @@ DumpD0hex
 		POP
 		rts
 
-
 zorro_tests:
-;		MOVE.B	#$DE,($BFE101).l
-;		PRINT   aParallelCodeDE
-;		PRINT   aZorroTest
 		clr.l	d7			; Clear boardnumber
-		move.l	#$20,d6			; High bits of Z2 mem to allocate
+		move.b	#$20,Z2Mem-V(a6)	; High bits of Z2 mem to allocate
+		move.b	#$e9,Z2RomMem-V(a6)	; High bits of Z2 rommem to allocate
 zorro_next_board:	
 		lea	NewLineTxt,a0
 		bsr	Print
 
 		add.l	#1,d7			; Add 1 to boardnumber
-	;; read out the expansion rom
+						;; read out the expansion rom
+
+		cmp.l	#32,d7
+		bge	NoMoreBoards		; ok if we had more than 32 boards I guess something is screwed up, so lets just exit
+
 		lea	autoconf-V(a6),a2
 		lea	E_EXPANSIONBASE,a0
 		bsr	ReadRom
@@ -8223,9 +8218,6 @@ zorro_next_board:
 		bsr	Print
 
 
-;		move.b	er_Type(a2),d0
-;		bsr	binhexbyte
-;		bsr	Print
 
 		lea	AutoConfZorro,a0
 		move.l	#4,d1
@@ -8423,7 +8415,6 @@ ConfigBoard:
 		cmp.b	#0,AutoConfMode-V(a6)	
 		beq	.quick
 		PUSH
-
 		lea	AutoConfZorroData,a0
 		move.l	#2,d1
 		bsr	Print
@@ -8469,7 +8460,7 @@ ConfigBoard:
 
 		;;  pass the type byte
 		move.b	er_Type(a0),d0
-		bra	ConfigBoard_Z2_RAM
+		bra	ConfigBoard_Z2
 	
 ConfigBoard_Z3:	
 		moveq	#ec_Shutup+ExpansionRom_SIZEOF,d0
@@ -8477,16 +8468,61 @@ ConfigBoard_Z3:
 		move.l	#-1,d0
 		rts
 
-ConfigBoard_Z2_RAM:
+ConfigBoard_Z2:
 
-		btst	#5,d0
+		btst	#5,d0				; Check if this is to be linked to RAM
+		beq	ConfigBoard_Z2_ROM		; no.... jump to shutup.
+		bra	ConfigBoard_Z2_RAM
+
+ConfigBoard_Z2_ROM:
+		btst	#4,d0
 		beq	ConfigBoard_Shutup
+		PUSH
+		lea	RomCardTxt,a0
+		move.l	#5,d1
+		bsr	Print
+		clr.l	d0
+		move.b	Z2RomMem-V(a6),d0
+		asl.l	#8,d0
+		asl.l	#8,d0
+		move.l	d0,d2
+		bsr	binhex
+		move.l	#4,d1
+		bsr	Print
 
+		lea	MinusTxt,a0
+		move.l	#5,d1
+		bsr	Print
+	
+
+		move.l	ZorroSize-V(a6),d0
+		add.l	d2,d0
+		move.l	#4,d1
+		bsr	binhex
+		bsr	Print
+
+.notillegal:
+		POP
+
+		clr.l	d1
+		move.b	Z2Mem-V(a6),d1
+		moveq	#ec_BaseAddress+ExpansionRom_SIZEOF,d0
+		bsr	WriteExpansionByte
+
+		move.l	ZorroSize-V(a6),d0
+		swap	d0
+		add.b	d0,Z2RomMem-V(a6)			; Add size of board to get address for next board
+
+		bra	ConfigBoard_Done
+		
+
+ConfigBoard_Z2_RAM:
 		PUSH
 		lea	MemCardTxt,a0
 		move.l	#5,d1
 		bsr	Print
-		move.l	d6,d0
+		clr.l	d0
+		move.b	Z2Mem-V(a6),d0
 		asl.l	#8,d0
 		asl.l	#8,d0
 		move.l	d0,d2
@@ -8519,19 +8555,21 @@ ConfigBoard_Z2_RAM:
 		POP
 
 ;;;  hack to put a Z2 memory card at address 0x200000
-		move.l	d6,d1
+		clr.l	d1
+		move.b	Z2Mem-V(a6),d1
 		moveq	#ec_BaseAddress+ExpansionRom_SIZEOF,d0
 		bsr	WriteExpansionByte
 
 		move.l	ZorroSize-V(a6),d0
 		swap	d0
-		add.l	d0,d6			; Add size of board to get address for next board
+		add.b	d0,Z2Mem-V(a6)			; Add size of board to get address for next board
 
 ConfigBoard_Done:
 		move.l	#0,d0
 		rts
 
 ConfigBoard_Shutup:
+		move.w	#$fff,$dff180
 		moveq	#ec_Shutup+ExpansionRom_SIZEOF,d0
 		bsr	WriteExpansionByte
 		move.l	#-2,d0
@@ -11554,6 +11592,8 @@ ShadowChiptxt:
 	dc.b	$a,$d,"Chipmem Shadowram detected, guess there is no more chipmem, stopping here",$a,$d,0
 AutoConfTxt:
 	dc.b	2,"Doing autoconfigstuff on Zorro slots (ONLY ONCE!)",$a,$a,0
+AutoConfTxt2:
+	dc.b	2,"Doing Detailed autoconfigstuff on Zorro slots (ONLY ONCE!)",$a,$a,0
 AutoConfBoard:
 	dc.b	"Board number: ",0
 AutoConfManu:
@@ -11594,6 +11634,8 @@ S4MB:
 	dc.b	"4MB",0
 MemCardTxt:
 	dc.b	$a,"    Memory detected and assigned to: ",0
+RomCardTxt:
+	dc.b	$a,"    ROM detected and assigned to: ",0
 	EVEN
 SizePointer:
 	dc.l	S8MB,S64k,S128k,S256k,S512k,S1MB,S2MB,S4MB
@@ -11691,12 +11733,6 @@ STxt879:	dc.b	"Sinus 879Hz    ",0
 STxt985:	dc.b	"Sinus 985Hz    ",0
 STxt1295:	dc.b	"Sinus 1295Hz   ",0
 STxt1759:	dc.b	"Siuns 1759Hz   ",0
-
-test:
- 	dc.b	$a,"# $ % & ( ) * + , - . / 0 1 2 3 4 5 6 7 8 9 : ; < = > ? @",$a
- 	dc.b	"A B C D E F G H I J K L M N O P Q R S T U V W X Y Z Å Ä Ö",0
-	 
-
 
 ROMAudioWaves:
 
@@ -12252,6 +12288,10 @@ ZorroSize:
 	dc.l	0
 AutoConfMode:
 	dc.b	0			; Type of autoconf. non 0 = detailed
+Z2Mem:
+	dc.b	0			; Position of Z2 memarea to allocate
+Z2RomMem:
+	dc.b	0			; Position of Z2 rommemarea to allocate
 
 C:
 	EVEN
