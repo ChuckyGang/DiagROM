@@ -1,4 +1,4 @@
-;APS0000003600000036000072F100000036000000360000003600000036000000360000003600000036
+;APS000000360000003600028A0200000036000000360000003600000036000000360000003600000036
 ;
 ;
 ; DiagROM by John "Chucky" Hertell
@@ -1345,7 +1345,7 @@ ClearScreen:
 	clr.l	(a2)+
 	dbf	d0,.loop
 .no:
-	lea	AnsiNull(pc),a0
+	lea	AnsiNull,a0
 	bsr	SendSerial
 
 	move.l	#12,d0
@@ -2971,8 +2971,13 @@ PrintMenu:
 	clr.l	d5
 	clr.l	d6
 	clr.l	d7
-	
-
+	move.w	MenuNumber-V(a6),d0
+	cmp.w	OldMenuNumber-V(a6),d0		; Check if menu is changed since last call
+	beq	.nochange
+	clr.b	MarkItem-V(a6)			; Clear variables for marked item etc
+	clr.b	OldMarkItem-V(a6)	
+	move.w	d0,OldMenuNumber-V(a6)
+.nochange:
 	cmp.b	#0,PrintMenuFlag-V(a6)
 	beq	.noprint			; if flag is 0, menu is already printed.
 	cmp.b	#2,PrintMenuFlag-V(a6)		; Check if we just want to update
@@ -8072,6 +8077,7 @@ AutoConfig:					; Do Autoconfigmagic
 	move.l	#4,d1
 	bsr	Print
 	move.b	#0,AutoConfMode-V(a6)		; Set that we want a fast autoconfig mode
+	lea	E_EXPANSIONBASE,a4		; Load expansionbase for Z2
 	bsr	zorro_tests
 
 	lea	AnyKeyMouseTxt,a0
@@ -8087,7 +8093,11 @@ AutoConfigDetail:				; Do Autoconfigmagic
 	bsr	Print
 	move.b	#1,AutoConfMode-V(a6)		; Set that we want a more detailed autoconfig mode
 	
+	lea	E_EXPANSIONBASE,a4
 	bsr	zorro_tests
+
+	lea	EZ3_EXPANSIONBASE,a4
+	bsr	zorro3_tests
 
 	lea	AnyKeyMouseTxt,a0
 	move.l	#3,d1
@@ -8164,11 +8174,17 @@ DumpD0hex
 		POP
 		rts
 
+zorro3_tests:
+		clr.l	d7			; Clear boardnumber
+		move.w	#$4000,Z3Mem-V(a6)
+		bra	zorro_next_board
+
 zorro_tests:
 		clr.l	d7			; Clear boardnumber
 		move.b	#$20,Z2Mem-V(a6)	; High bits of Z2 mem to allocate
 		move.b	#$e9,Z2RomMem-V(a6)	; High bits of Z2 rommem to allocate
 zorro_next_board:	
+		clr.l	d6			; Clear d6, we will use this as a flag for Z2 or Z3 mode.
 		lea	NewLineTxt,a0
 		bsr	Print
 
@@ -8179,7 +8195,7 @@ zorro_next_board:
 		bge	NoMoreBoards		; ok if we had more than 32 boards I guess something is screwed up, so lets just exit
 
 		lea	autoconf-V(a6),a2
-		lea	E_EXPANSIONBASE,a0
+		move.l	a4,a0
 		bsr	ReadRom
 
 		lea	autoconf-V(a6),a2
@@ -8231,12 +8247,14 @@ zorro_next_board:
 		beq	.z2
 
 		lea	III,a0
+		move.l	#3,d6			; Set D6 to 3, as Z3
 		move.l	#3,d1
 		bsr	Print
 		bra	.z3	
 .z2:
 		lea	II,a0
 		move.l	#3,d1
+		move.l	#2,d6			; Set D6 to 2, as Z2
 		bsr	Print		
 
 .z3:
@@ -8286,16 +8304,27 @@ zorro_next_board:
 		move.b	er_Type(a2),d0
 		and.b	#7,d0
 		asl	#2,d0
+		btst	#5,er_Flags(a2)			; Check for Z3
+		bne	.z3P
 		lea	SizePointer,a0
+		bra	.z2P
+.z3P:
+		lea	SizePointer3,a0			; Z3, so we use higher numbers
+.z2P:
 		move.l	(a0,d0.l),a0
 		move.l	#2,d1
 		bsr	Print
 
+		btst	#5,er_Flags(a2)			; Check if higher sizeflags will be used
+		bne	.z3S
 		lea	SizePointer2,a0
+		bra	.z2S
+.z3S:
+		lea	SizePointer4,a0
+.z2S:
+
 		move.l	(a0,d0.l),ZorroSize-V(a6)
 		POP
-
-
 
 		move.w	er_Manufacturer(a2),d0
 		beq	NoMoreBoards
@@ -8303,7 +8332,7 @@ zorro_next_board:
 		beq	NoMoreBoards
 
 complete_config:
-		lea	E_EXPANSIONBASE,a0
+		move.l	a4,a0
 		bsr	ConfigBoard
 		cmp.l	#0,d0
 		bne	.error1
@@ -8372,10 +8401,17 @@ readrom_loop:
 		rts
 
 WriteExpansionByte:
-		lsl.w	#2,d0		
+		PUSH
+		move.b	d1,d0
+		bsr	binhexbyte
+		move.l	#3,d1
+		bsr	Print
+		POP
+		move.l	a4,a0			; Store expansionbase to a0
+		lsl.l	#2,d0		
 		lea.l	0(a0,d0.w),a0
 
-		move.b	d1,d0		
+		move.b	d1,d0	
 		lsl.b	#4,d0		
 
 		cmpa.l	#EZ3_EXPANSIONBASE,a0
@@ -8385,8 +8421,10 @@ WriteExpansionByte:
 .zorroIII:	move.b	d0,$100(a0)	
 .doWrite:
 		move.b	d1,(a0)
-
-		clr.l	d0
+		move.l	a0,d0
+		bsr	binhex
+		move.l	#3,d1
+		bsr	Print
 		rts
 
 
@@ -8418,7 +8456,7 @@ ConfigBoard:
 		lea	AutoConfZorroData,a0
 		move.l	#2,d1
 		bsr	Print
-		move.l	#$10,d3
+		move.l	#$f,d3
 		lea	autoconf-V(a6),a1
 .loopa:		move.b	(a1)+,d0
 		bsr	binhexbyte
@@ -8462,11 +8500,63 @@ ConfigBoard:
 		move.b	er_Type(a0),d0
 		bra	ConfigBoard_Z2
 	
-ConfigBoard_Z3:	
-		moveq	#ec_Shutup+ExpansionRom_SIZEOF,d0
+ConfigBoard_Z3:						; Configure Z3 Memcard
+		PUSH
+		lea	MemCardTxt,a0
+		move.l	#5,d1
+		bsr	Print
+		clr.l	d0
+		move.w	Z3Mem-V(a6),d0
+		asl.l	#8,d0
+		asl.l	#8,d0
+		move.l	d0,d2
+		bsr	binhex
+		move.l	#4,d1
+		bsr	Print
+
+		lea	MinusTxt,a0
+		move.l	#5,d1
+		bsr	Print
+	
+
+		move.l	ZorroSize-V(a6),d0
+
+		add.l	d2,d0
+		move.l	#4,d1
+		bsr	binhex
+		bsr	Print
+
+	;	cmp.l	#$80000000,d2
+	;	bgt	.illegal
+	;	cmp.l	#$80000000,d0
+	;	bgt	.illegal
+		
+		bra	.notillegal
+.illegal:
+		lea	IllegalZ3,a0
+		move.l	#1,d1
+		bsr	Print				
+.notillegal:
+		POP
+		clr.l	d1
+		move.w	Z3Mem-V(a6),d1
+		moveq	#ec_BaseAddress+ExpansionRom_SIZEOF,d0
 		bsr	WriteExpansionByte
-		move.l	#-1,d0
+
+
+		move.w	Z3Mem-V(a6),d1
+		lsr.l	#8,d1
+
+		moveq	#ec_Z3_HighBase+ExpansionRom_SIZEOF,d0
+		bsr	WriteExpansionByte
+
+		move.l	ZorroSize-V(a6),d0
+		swap	d0
+		add.w	d0,Z3Mem-V(a6)			; Add size of board to get address for next board
+
+		move.l	#0,d0
 		rts
+
 
 ConfigBoard_Z2:
 
@@ -8505,11 +8595,11 @@ ConfigBoard_Z2_ROM:
 		POP
 
 		clr.l	d1
-		move.b	Z2Mem-V(a6),d1
+		move.w	Z2Mem-V(a6),d1
 		moveq	#ec_BaseAddress+ExpansionRom_SIZEOF,d0
 		bsr	WriteExpansionByte
 
-		move.l	ZorroSize-V(a6),d0
+		move.b	ZorroSize-V(a6),d0
 		swap	d0
 		add.b	d0,Z2RomMem-V(a6)			; Add size of board to get address for next board
 
@@ -8569,7 +8659,6 @@ ConfigBoard_Done:
 		rts
 
 ConfigBoard_Shutup:
-		move.w	#$fff,$dff180
 		moveq	#ec_Shutup+ExpansionRom_SIZEOF,d0
 		bsr	WriteExpansionByte
 		move.l	#-2,d0
@@ -10838,19 +10927,18 @@ RomMenuCopper:
 MenuSprite:
 	dc.l	$01200000,$01220000,$01240000,$01260000,$01280000,$012a0000,$012c0000,$012e0000,$01300000,$01320000,$01340000,$01360000,$01380000,$013a0000,$013c0000,$013e0000
 
-	dc.l	$0100b200,$00920038,$009400d0,$008e2781,$009027cc,$01020000,$01080000,$010a0000
+	dc.l	$0100b200,$0092003c,$009400d4,$008e2c81,$00902cc1,$01020000,$01080000,$010a0000
 	dc.l	$01800000,$01820f00,$018400f0,$01860ff0,$0188000f,$018a0f0f,$018c00ff,$018e0fff,$01900ff0
 
 MenuBplPnt:
 	dc.l	$00e00000,$00e20000,$00e40000,$00e60000,$00e80000,$00ea0000
-
 	dc.l	$fffffffe	;End of copperlist
 EndRomMenuCopper:
 
 
 RomEcsCopper:
 	dc.l	$01200000,$01220000,$01240000,$01260000,$01280000,$012a0000,$012c0000,$012e0000,$01300000,$01320000,$01340000,$01360000,$0138000,$013a0000,$013c0000,$013e0000
-	dc.l	$01005200,$00920038,$009400d0,$008e2781,$009027cc,$01020000,$01080000,$010a0000
+	dc.l	$01005200,$00920038,$009400d0,$008e2c81,$00902cc1,$01020000,$01080000,$010a0000
 
 	blk.l	32,0
 ;MenuBplPnt2:
@@ -11632,6 +11720,23 @@ S2MB:
 	dc.b	"2MB",0
 S4MB:
 	dc.b	"4MB",0
+S16MB:
+	dc.b	"16MB",0
+S32MB:
+	dc.b	"32MB",0
+S64MB:
+	dc.b	"64MB",0
+S128MB:
+	dc.b	"128MB",0
+S256MB:
+	dc.b	"256MB",0
+S512MB:
+	dc.b	"512MB",0
+S1GB:
+	dc.b	"1GB",0
+SRes:
+	dc.b	"RESERVED",0
+
 MemCardTxt:
 	dc.b	$a,"    Memory detected and assigned to: ",0
 RomCardTxt:
@@ -11641,8 +11746,14 @@ SizePointer:
 	dc.l	S8MB,S64k,S128k,S256k,S512k,S1MB,S2MB,S4MB
 SizePointer2:
 	dc.l	$800000,$10000,$20000,$40000,$80000,$100000,$200000,$400000
+SizePointer3:
+	dc.l	S16MB,S32MB,S64MB,S128MB,S256MB,S512MB,S1GB,SRes
+SizePointer4:
+	dc.l	$1000000,$2000000,$4000000,$8000000,$10000000,$20000000,$40000000,$80000000
 IllegalZ2:
 	dc.b	$a,"  ---- ILLEGAL Configuration. Memory outside Zorro II Area!!",$a,0
+IllegalZ3:
+	dc.b	$a,"  ---- ILLEGAL Configuration. Memory outside Zorro III Area!!",$a,0
 bytehextxt:
 	dc.b	"000102030405060708090A0B0C0D0E0F"
 	dc.b	"101112131415161718191A1B1C1D1E1F"
@@ -12033,6 +12144,8 @@ NoDraw:
 	dc.l	0
 MenuNumber:
 	dc.w	0	; Contains the menunuber to be printed, from the Menus list
+OldMenuNumber:
+	dc.w	0	; Contain the old menunumber
 NoChar:	dc.b	0	; if 0 print char, anything else, never do screenactions. (no chipmem avaible)
 Inverted:
 	dc.b	0	; if 0, former char was not inverted
@@ -12292,6 +12405,9 @@ Z2Mem:
 	dc.b	0			; Position of Z2 memarea to allocate
 Z2RomMem:
 	dc.b	0			; Position of Z2 rommemarea to allocate
+	EVEN
+Z3Mem:
+	dc.w	0			; Position of Z3 memarea to allocate
 
 C:
 	EVEN
