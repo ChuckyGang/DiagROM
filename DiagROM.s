@@ -1,4 +1,4 @@
-;APS000000360000003600028A0200000036000000360000003600000036000000360000003600000036
+;APS00000036000000360002B45A00000036000000360000003600000036000000360000003600000036
 ;
 ;
 ; DiagROM by John "Chucky" Hertell
@@ -893,8 +893,8 @@ code:
 ; Code in NON-ROM mode
 code:
 
-	clr.b	$bfa001
-	clr.b	$bfa201
+	clr.b	$bfe001
+	clr.b	$bfe201
 	clr.b	$bfe001
 	move.b	#$ff,$bfe301
 	move.b	#3,$bfe201	
@@ -5175,8 +5175,8 @@ CheckDetectedMBMem:
 	clr.l	FirstMBMem-V(a6)
 	clr.l	MBMemSize-V(a6)
 
-	lea	$8000000,a0
-	lea	$10000000,a1
+	lea	$40000000,a0
+	lea	$80000000,a1
 	bsr	DetectMem
 
 	move.l	a0,FirstMBMem-V(a6)
@@ -7864,7 +7864,6 @@ ricoh:						; RICOH chipset detected.
 	bra	.rno19
 .r19:
 	add.l	#1900,d0
-	move.l	#$f00,$dff180
 
 .rno19
 	bsr	bindec
@@ -8072,32 +8071,28 @@ oki:
 ;------------------------------------------------------------------------------------------
 
 AutoConfig:					; Do Autoconfigmagic
-	bsr	ClearScreen
-	lea	AutoConfTxt,a0
-	move.l	#4,d1
-	bsr	Print
-	move.b	#0,AutoConfMode-V(a6)		; Set that we want a fast autoconfig mode
-	lea	E_EXPANSIONBASE,a4		; Load expansionbase for Z2
-	bsr	zorro_tests
-
-	lea	AnyKeyMouseTxt,a0
-	move.l	#3,d1
-	bsr	Print
-	bsr	WaitButton
 	bra	MainMenu
+						; ok for now.. autoconfig is screwed. lets do it right this time instead..
+						
+;	bsr	ClearScreen
+;	lea	AutoConfTxt,a0
+;	move.l	#4,d1
+;	bsr	Print
+;	move.b	#0,AutoConfMode-V(a6)		; Set that we want a fast autoconfig mode
+;	lea	E_EXPANSIONBASE,a4		; Load expansionbase for Z2
+;	bsr	zorro_tests
+
+;	lea	AnyKeyMouseTxt,a0
+;	move.l	#3,d1
+;	bsr	Print
+;	bsr	WaitButton
+;	bra	MainMenu
 
 AutoConfigDetail:				; Do Autoconfigmagic
 	bsr	ClearScreen
-	lea	AutoConfTxt2,a0
-	move.l	#4,d1
-	bsr	Print
 	move.b	#1,AutoConfMode-V(a6)		; Set that we want a more detailed autoconfig mode
-	
-	lea	E_EXPANSIONBASE,a4
-	bsr	zorro_tests
-
-	lea	EZ3_EXPANSIONBASE,a4
-	bsr	zorro3_tests
+	bsr	DoAutoconfig
+	bsr	WaitButton
 
 	lea	AnyKeyMouseTxt,a0
 	move.l	#3,d1
@@ -8118,7 +8113,6 @@ ERT_TYPESIZE		EQU	2
 ERT_NEWBOARD		EQU	$c0
 ERT_ZORROII		EQU	ERT_NEWBOARD
 ERT_ZORROIII		EQU	$80
-
 ; ** other bits defined in er_Type **
 ; ** er_Type field memory size bits ** 
 ERT_MEMMASK		EQU	$07	;Bits 2-0
@@ -8158,516 +8152,505 @@ ec_Reserved1e		rs.b	1
 ec_Reserved1f		rs.b	1
 ExpansionControl_SIZEOF rs.b	0
 
+DoAutoconfig:
+	lea	AutoConfBuffer-V(a6),a2
+	move.b	#$20,AutoConfZ2Ram-V(a6)
+	move.w	#$4000,AutoConfZ3-V(a6)	; Set defaultvalues for different cardtypes
+	move.b	#$20,AutoConfZ2Ram-V(a6)
+	move.b	#$e9,AutoConfZ2IO-V(a6)
+	move.l	#1,d6			; Clear boardnumber
+.loopz2:
+	lea	E_EXPANSIONBASE,a0
+	bsr	.ReadRom
+	cmp.b	#0,AutoConfType-V(a6)	; Check type of card, if 0, no card found
+	beq	.noz2	
+	bsr	.WriteByte
+	add.l	#1,d6
+	cmp.l	#32,d6			; if we hit 32 boards.. something is wrong, exit
+	bgt	.toomuch
 
-DumpD0
-		PUSH
-		bsr	bindec
-		move.l	#2,d1
-		bsr	Print
-		POP
-		rts
-DumpD0hex
-		PUSH
-		bsr	binhexbyte
-		move.l	#2,d1
-		bsr	Print
-		POP
-		rts
+	bra	.loopz2
+.noz2:
 
-zorro3_tests:
-		clr.l	d7			; Clear boardnumber
-		move.w	#$4000,Z3Mem-V(a6)
-		bra	zorro_next_board
+.loopz3:
+	lea	EZ3_EXPANSIONBASE,a0
+	bsr	.ReadRom
+	cmp.b	#0,AutoConfType-V(a6)	; Check type of card, if 0, no card found
+	beq	.noz3	
+	bsr	.WriteByte
+	add.l	#1,d6
+	cmp.l	#32,d6			; if we hit 32 boards.. something is wrong, exit
+	bgt	.toomuch
 
-zorro_tests:
-		clr.l	d7			; Clear boardnumber
-		move.b	#$20,Z2Mem-V(a6)	; High bits of Z2 mem to allocate
-		move.b	#$e9,Z2RomMem-V(a6)	; High bits of Z2 rommem to allocate
-zorro_next_board:	
-		clr.l	d6			; Clear d6, we will use this as a flag for Z2 or Z3 mode.
-		lea	NewLineTxt,a0
-		bsr	Print
-
-		add.l	#1,d7			; Add 1 to boardnumber
-						;; read out the expansion rom
-
-		cmp.l	#32,d7
-		bge	NoMoreBoards		; ok if we had more than 32 boards I guess something is screwed up, so lets just exit
-
-		lea	autoconf-V(a6),a2
-		move.l	a4,a0
-		bsr	ReadRom
-
-		lea	autoconf-V(a6),a2
-		clr.l	d0
-		
-		tst.b	er_Reserved03(a2)
-		bne	NoMoreBoards
-
-		clr.l	d0
-		PUSH
-
-		lea	AutoConfBoard,a0
-		move.l	#3,d1
-		bsr	Print
-		move.l	d7,d0
-		bsr	bindec
-		move.l	#2,d1
-		bsr	Print
-		lea	NewLineTxt,a0
-		bsr	Print
-		lea	AutoConfManu,a0
-		move.l	#4,d1
-		bsr	Print
-
-		move.w	er_Manufacturer(a2),d0
-		bsr	DumpD0
+	bra	.loopz3
 
 
-		lea	AutoConfSerial,a0
-		move.l	#4,d1
-		bsr	Print
+	lea	NewLineTxt,a0		; Debugdata KUK!
+	bsr	Print
+	move.l	d7,d0
+	bsr	bindec
+	move.l	#2,d1
+	bsr	Print
 
-		move.w	er_SerialNumber(a2),d0
-		bsr	DumpD0
-		lea	NewLineTxt,a0
-		bsr	Print
+.noz3:
 
+	rts	
+.toomuch:
+	lea	AutoConfToomuchTxt,a0
+	move.l	#1,d1
+	bra	Print
 
+.ReadRom:
+	clr.b	AutoConfType-V(a6)	; Set type to 0 (no card found)
+	clr.b	AutoConfZorro-V(a6)	; Set zorrotype to 2 (0)
+	clr.l	AutoConfSize-V(a6)	; Clear the size of the board
 
-		lea	AutoConfZorro,a0
-		move.l	#4,d1
-		bsr	Print
+	clr.l	d0
+	move.l	a0,a3			; Backup of card
+	move.l	a2,a4			; Backup of zorrobuffer
+	bsr	.ReadByte
 
-		clr.l	d0
-		move.b	er_Type(a2),d0
-		and.b	#$c0,d0			; Stop out all except 2 top bits
-		
-		cmp.b	#$c0,d0
-		beq	.z2
+	move.b	d0,(a2)+
+	; All other bytes are inverted
+	moveq.l	#1,d2
+.ReadRomLoop:
+	move.l	d2,d0
+	move.l	a3,a0			; Huh
+	bsr	.ReadByte
+	not.b	d0
+	move.b	d0,(a2)+
+	addq.w	#1,d2
+	cmp.w	#ExpansionRom_SIZEOF,d2	; check if we read enough data
+	bls.s	.ReadRomLoop
 
-		lea	III,a0
-		move.l	#3,d6			; Set D6 to 3, as Z3
-		move.l	#3,d1
-		bsr	Print
-		bra	.z3	
-.z2:
-		lea	II,a0
-		move.l	#3,d1
-		move.l	#2,d6			; Set D6 to 2, as Z2
-		bsr	Print		
+	move.l	a4,a2			; Restore zorrobuffer
+	cmp.b	#0,AutoConfMode-V(a6)
+	beq	.nodetail
 
-.z3:
-		lea	AutoConfMem,a0
-		move.l	#4,d1
-		bsr	Print
-		btst	#5,er_Type(a2)
-		beq	.nomem
-		bsr	PrintYes
-		bra	.mem
-.nomem:
-		bsr	PrintNo
-.mem:
-		lea	AutoConfAutoboot,a0
-		move.l	#4,d1
-		bsr	Print
+	tst.b	er_Reserved03(a2)	; Check if it is 0, if not, we have no card
+	bne	.NoCard
 
-		btst	#4,er_Type(a2)
-		beq	.noautoboot
-		bsr	PrintYes
-		bra	.autoboot
-.noautoboot:
-		bsr	PrintNo
-.autoboot:
-
-		lea	NewLineTxt,a0
-		bsr	Print
+	tst	er_Manufacturer(a2)	; Check if it is 0, if so, we have no card
+	beq	.NoCard
 
 
-		lea	AutoConfLink,a0
-		move.l	#4,d1
-		bsr	Print
+	PUSH
+	lea	AutoConfBoardTxt,a0
+	move.l	#5,d1
+	bsr	Print
+	move.l	d6,d0			; Take boardnumber to d0
+	bsr	bindec
+	move.l	#2,d1
+	bsr	Print
 
-		btst	#3,er_Type(a2)
-		beq	.nolink
-		bsr	PrintYes
-		bra	.link
-.nolink:
-		bsr	PrintNo
-.link:
+	lea	AutoConfManuTxt,a0
+	move.l	#3,d1
+	bsr	Print
 
-		lea	AutoConfSize,a0
-		move.l	#4,d1
-		bsr	Print
+	move.w	er_Manufacturer(a2),d0
+	bsr	bindec
+	move.w	#2,d1
+	bsr	Print
 
-		clr.l	d0
-		move.b	er_Type(a2),d0
-		and.b	#7,d0
-		asl	#2,d0
-		btst	#5,er_Flags(a2)			; Check for Z3
-		bne	.z3P
-		lea	SizePointer,a0
-		bra	.z2P
-.z3P:
-		lea	SizePointer3,a0			; Z3, so we use higher numbers
-.z2P:
-		move.l	(a0,d0.l),a0
-		move.l	#2,d1
-		bsr	Print
+	lea	AutoConfSerTxt,a0
+	move.l	#3,d1
+	bsr	Print
 
-		btst	#5,er_Flags(a2)			; Check if higher sizeflags will be used
-		bne	.z3S
-		lea	SizePointer2,a0
-		bra	.z2S
-.z3S:
-		lea	SizePointer4,a0
-.z2S:
+	move.w	er_SerialNumber(a2),d0
+	bsr	bindec
+	move.w	#2,d1
+	bsr	Print
 
-		move.l	(a0,d0.l),ZorroSize-V(a6)
-		POP
+	lea	AutoConfZorTypeTxt,a0
+	move.l	#3,d1
+	bsr	Print	
 
-		move.w	er_Manufacturer(a2),d0
-		beq	NoMoreBoards
-		cmp.w	#-1,d0
-		beq	NoMoreBoards
+	clr.l	d0			; Print if it is Zorro II or III
+	move.b	er_Type(a2),d0
+	and.b	#$c0,d0			; Strip out all except top 2 bits
+	cmp.b	#$c0,d0
+	beq	.readz2
+	lea	III,a0
+	move.l	#6,d1
+	bsr	Print
+	bra	.readz3
+.readz2:
+	lea	II,a0
+	move.l	#6,d1
+	bsr	Print
 
-complete_config:
-		move.l	a4,a0
-		bsr	ConfigBoard
-		cmp.l	#0,d0
-		bne	.error1
+.readz3:
 
-		lea	NewLineTxt,a0
-		bsr	Print
+	lea	AutoConfLinkTxt,a0
+	move.l	#3,d1
+	bsr	Print	
+
+	btst	#5,er_Type(a2)		; Check if it is Linked to system pool (RAM)
+	beq	.readnomem
+	bsr	PrintYes
+	bra	.readmem
+.readnomem:
+	bsr	PrintNo
+.readmem:
+	lea	AutoConfAutoBTxt,a0
+	move.l	#3,d1
+	bsr	Print	
+
+	btst	#4,er_Type(a2)		; Check if there is any Autobootstuff
+	bne	.readnoboot
+	bsr	PrintNo
+	bra	.readboot
+.readnoboot:
+	bsr	PrintYes
+.readboot:
+
+
+	lea	AutoConfLinked2NextTxt,a0
+	move.l	#3,d1
+	bsr	Print	
+
+	btst	#4,er_Type(a2)		; Check if linked to next card
+	beq	.readnolink
+	bsr	PrintYes
+	bra	.readlink
+.readnolink:
+	bsr	PrintNo
+.readlink:
+
+	lea	AutoConfExtSizeTxt,a0
+	move.l	#3,d1
+	bsr	Print
+
+	clr.l	d7			; Clear d7 to have as a variable. if changed we have extended size
+	btst	#5,er_Flags(a2)		; Check if Extended sizes will be used
+	beq	.readnoextsize
+	moveq.l	#1,d7			; Set d7 to 1, we have extended sizes
+	bsr	PrintYes
+	bra	.readextsize
+.readnoextsize:
+	bsr	PrintNo
+.readextsize:
+	lea	AutoConfSizeTxt,a0
+	move.l	#3,d1
+	bsr	Print	
+
+	clr.l	d0
+	move.b	er_Type(a2),d0
+	and.b	#7,d0			; D0 now contains sizebits
+	asl	#2,d0			; Multiply with 4, to get correct location in pointerlist
+
+
+	lea	SizeTxtPointer,a0
+	cmp.b	#0,d7			; Check if d7 is 0, if so we have not extended size
+	beq	.readnoext
+	lea	ExtSizeTxtPointer,a0
+.readnoext:
+	move.l	(a0,d0.l),a0		; A0 now points to the correct textstring
+	move.l	#2,d1
+	bsr	Print
+
+	lea	AutoConfBufTxt,a0
+	move.l	#6,d1
+	bsr	Print
+	move.l	a2,a1
+	move.l	#ExpansionRom_SIZEOF-1,d7
+.printloop:
+	move.b	(a1)+,d0
+	bsr	binhexbyte
+	move.l	#2,d1
+	bsr	Print
+	lea	SpaceTxt,a0
+	bsr	Print
+	dbf	d7,.printloop
+
+	move.l	a4,a2			; Restore backup of zorrobuffer
+	POP
+.nodetail:
+
+					; ok detailed VERBOSE output done, lets do it "again" quiet and set variables.
+
+
+
+	btst	#5,er_Type(a2)		; Check if it is Linked to system pool (RAM)
+	beq	.readsetnomem
+	move.b	#2,AutoConfType-V(a6)	; Set type to 2 = RAM
+	bra	.readsetmem
+.readsetnomem:
+	clr.l	d0
+	move.b	er_Type(a2),d0
+	and	#7,d0
 	
-		bra	zorro_next_board
-.error1:
-		cmp.l	#-1,d0
-		bne	.error2
-
-		bra	zorro_next_board
-.error2:
-		cmp.l	#-2,d0	
-		bne	.errorUnknown
-		bra	zorro_next_board
-.errorUnknown:
-				; KUK
-		RTS
-NoMoreBoards:
-		lea	NewLineTxt,a0
-		bsr	Print
-		lea	AutoConfDone,a0
-		move.l	#2,d1
-		bsr	Print
-		rts	
+	cmp	#2,d0			; Check if space is more than 128K then allocate it to Z2 area instead. (but not ram)
+	bge	.readsetz2space
 
 
-PrintYes:
-		lea	YES,a0
-		move.l	#2,d1
-		bsr	Print
-		rts
-PrintNo:
-		lea	NO,a0
-		move.l	#1,d1
-		bsr	Print
-		rts
+	move.b	#1,AutoConfType-V(a6)	; Set type to 1 = ROM
+.readsetmem:
 
 
-; =============== S U B	R O U T	I N E =======================================
+	clr.l	d0			; Check if it is Zorro II or III
+	move.b	er_Type(a2),d0
+	and.b	#$c0,d0			; Strip out all except top 2 bits
+	cmp.b	#$c0,d0
+	beq	.readsetz2
+	move.b	#1,AutoConfZorro-V(a6)
+	bra	.readsetz3
+.readsetz2space:			; To be assigned in Z2 space, but not RAM
+	move.b	#3,AutoConfType-V(a6)	; Set type to 3 = Z2Space no ram
+	bra	.readsetz3
+
+.readsetz2:
+	move.b	#0,AutoConfZorro-V(a6)
+.readsetz3:
+
+
+
+	clr.l	d7			; Clear d7 to have as a variable. if changed we have extended size
+	btst	#5,er_Flags(a2)		; Check if Extended sizes will be used
+	beq	.readsetnoextsize
+	moveq.l	#1,d7			; Set d7 to 1, we have extended sizes
+.readsetnoextsize:
+
+	clr.l	d0
+	move.b	er_Type(a2),d0
+	and.b	#7,d0			; D0 now contains sizebits
+	asl	#2,d0			; Multiply with 4, to get correct location in pointerlist
+
+
+	lea	SizePointer,a0
+	cmp.b	#0,d7			; Check if d7 is 0, if so we have not extended size
+	beq	.readsetnoext
+	lea	ExtSizePointer,a0
+.readsetnoext:
+	move.l	(a0,d0.l),d0		; D0 now contains the size of the card.
+
+	move.l	d0,AutoConfSize-V(a6)	; Write the size to the buffer
+	rts
+.NoCard:
+	move.b	#0,AutoConfType-V(a6)	; Ser that we have no card
+	rts
+
+.ReadByte:			; Reads one byte from Cardexpansion.
+				; IN:
+				; 	D0 = Location into buffer to read
+				;	A0 = Card
+				;	A2 = Destionationbuffer
+				; OUT:
+				;	D0 = Byte read
+
+	lsl.w	#2,d0		;	Multiply with 4
+	lea.l	0(a0,d0.w),a0	; a0 now contain pointer to real card.
+
+	move.l	a0,d1
+	bmi	.Z3		; Check for Z3
+	move.b	$2(a0),d1
+	bra	.doRead
+.Z3:
+	move.w	#$fff,$dff180
+	move.b	$100(a0),d1
+.doRead:
+	lsr.b	#4,d1		; Strip away so we just keep a nibble
+	moveq.l	#0,d0
+	move.b	(a0),d0
+	and.b	#$f0,d0		; Strip away so we just keep a nibble
+	or.b	d1,d0		; Put those 2 nibbles together, and we get a byte read.
+	rts
+
+.WriteByte:				; Write configbyte to configure card. (ok WORD for Z3!)
+	clr.l	d0
+	lea	NewLineTxt,a0
+	bsr	Print
+
+	move.b	AutoConfType-V(a6),d0	; Get what type of card
+	cmp.b	#0,d0			; No card found
+	beq	.exit
+	cmp.b	#1,AutoConfZorro-V(a6)	; Check if Z3 Card
+	beq	.WriteZ3
+	cmp.b	#1,d0			; Check if Z2 ROM
+	beq	.WriteZ2IO
+	cmp.b	#3,d0			; Check if Z3 Area card (NO RAM)
+	beq	.WriteZ2noram
+
+	lea	AutoConfRamCardTxt,a0	; We got a Z2 RAM Card
+	clr.l	d1
+	move.b	AutoConfZ2Ram-V(a6),d1
+	move.w	d1,AutoConfWByte-V(a6)
+	move.l	d1,d0
+	swap	d0
+	move.l	d0,AutoConfAddr-V(a6)
+	add.l	AutoConfSize-V(a6),d0
+	swap	d0
+	move.b	d0,AutoConfZ2Ram-V(a6)
+	lea	E_EXPANSIONBASE,a1
+	bra	.Write
+
+.WriteZ2noram:
+	lea	AutoConfRomCardTxt,a0	; We got a Z2 RAM Card
+	clr.l	d1
+	move.b	AutoConfZ2Ram-V(a6),d1
+	move.w	d1,AutoConfWByte-V(a6)
+	move.l	d1,d0
+	swap	d0
+	move.l	d0,AutoConfAddr-V(a6)
+	add.l	AutoConfSize-V(a6),d0
+	swap	d0
+	move.b	d0,AutoConfZ2Ram-V(a6)
+	lea	E_EXPANSIONBASE,a1
+	bra	.Write
+
+
+.WriteZ3:
+	lea	AutoConfZ3CardTxt,a0	; We got a Z3 Card
+	clr.l	d1
+	move.w	AutoConfZ3-V(a6),d1
+	move.w	d1,AutoConfWByte-V(a6)
+	move.l	d1,d0
+	swap	d0
+	move.l	d0,AutoConfAddr-V(a6)
+	add.l	AutoConfSize-V(a6),d0
+	swap	d0
+	move.w	d0,AutoConfZ3-V(a6)
+	lea	EZ3_EXPANSIONBASE,a1
+	bra	.Write
+
+.WriteZ2IO:
+	lea	AutoConfRomCardTxt,a0	; We got a Z2 ROM Card
+	clr.l	d1
+
+	move.b	AutoConfZ2IO-V(a6),d1
+	clr.l	d1
+	move.b	AutoConfZ2IO-V(a6),d1
+	move.w	d1,AutoConfWByte-V(a6)
+	move.l	d1,d0
+	swap	d0
+	move.l	d0,AutoConfAddr-V(a6)
+	add.l	AutoConfSize-V(a6),d0
+	swap	d0
+	move.b	d0,AutoConfZ2IO-V(a6)
+	lea	E_EXPANSIONBASE,a1
+	bra	.Write
+
+.Write:					; OK! we have a card, not Z3 or Z2io. it must be Z2 RAM!
+	move.l	d1,d3
+	move.l	#2,d1
+	bsr	Print
+
+					; IN now:
+					; A0 = String to output
+					; D0 = Startadr of Autoconfig, cleartext
+					; D2 = Endadr
+					; D3 = Startadr of Autoconfig, short
+					; A1 = Expansionbase
+
+	move.l	AutoConfAddr-V(a6),d0	; Get address to assign board to
+	move.l	d0,d2			; Store size in D2
+	bsr	binhex
+	move.l	#6,d1
+	bsr	Print
+	lea	MinusTxt,a0
+	move.l	#3,d1
+	bsr	Print
+
+	move.l	d2,d0			; move back size to D0
+	add.l	AutoConfSize-V(a6),d0	; Add the size, to get the endaddress
+	bsr	binhex
+	move.l	#6,d1
+	bsr	Print
+
+	move.l	a1,a0			; Set correct Expansionbase
+
+;	bra	.WriteFast		; fast config
+	cmp.b	#0,AutoConfMode-V(a6)
+	beq	.WriteFast
+	lea	AutoConfEnableTxt,a0
+	move.l	#2,d1
+	bsr	Print
+
+.WriteLoop:
+	bsr	GetInput	; Get inputdata
+	cmp.b	#0,BUTTON-V(a6)
+	beq	.WriteLoop
+	cmp.b	#1,LMB-V(a6)
+	beq	.WriteFast
+	cmp.b	#1,RMB-V(a6)	
+	beq	.WriteNoAssign
+	move.b	GetCharData-V(a6),d7	; Get chardata
+	bclr	#5,d7		; Make it uppercase
+	cmp.b	#"Y",d7
+	beq	.WriteFast
+	cmp.b	#"N",d7
+	beq	.WriteNoAssign
+	bra	.WriteLoop
+
+.WriteFast:
+	move.l	d3,d1
+	bsr	.WriteCard
+	rts
+.WriteNoAssign:
+	moveq	#ec_Shutup+ExpansionRom_SIZEOF,d0
+	bsr	.WriteCard
+	move.l	#-2,d0
+.exit:	rts
 	
-ReadRom: ; a0 = card, a2 = dest
-		move.l	a0,a3
-	
-		clr.l	d0
-		bsr	ReadExpansionByte
-		move.b	d0,(a2)+
+.WriteCard:
+	move.l	#ec_BaseAddress+ExpansionRom_SIZEOF,d0
+	clr.l	d1
+	move.w	AutoConfWByte-V(a6),d1	; Get data to write
 
-	;; all the other bytes are inverted
-		moveq.l	#1,d2
-
-readrom_loop:
-		move.l	d2,d0
-		move.l	a3,a0
-
-		bsr	ReadExpansionByte
-		not.b	d0
-		move.b	d0,(a2)+
-
-		addq.w	#1,d2
-		cmp.w	#ExpansionRom_SIZEOF,d2
-		bls.s	readrom_loop
-
-		rts
-
-WriteExpansionByte:
-		PUSH
-		move.b	d1,d0
-		bsr	binhexbyte
-		move.l	#3,d1
-		bsr	Print
-		POP
-		move.l	a4,a0			; Store expansionbase to a0
-		lsl.l	#2,d0		
-		lea.l	0(a0,d0.w),a0
-
-		move.b	d1,d0	
-		lsl.b	#4,d0		
-
-		cmpa.l	#EZ3_EXPANSIONBASE,a0
-		bhs.s	.zorroIII
-		move.b	d0,$002(a0)
-		bra.s	.doWrite
-.zorroIII:	move.b	d0,$100(a0)	
-.doWrite:
-		move.b	d1,(a0)
-		move.l	a0,d0
-		bsr	binhex
-		move.l	#3,d1
-		bsr	Print
-		rts
+	cmp.b	#0,AutoConfMode-V(a6)
+	beq	.WriteCardFast
+.WriteCardFast:
+	lsl.l	#2,d0		; Multiply with 4
+	move.l	a0,a1
+	lea.l	0(a0,d0.w),a0
 
 
-ReadExpansionByte:	
-		lsl.w	#2,d0	
-		lea.l	0(a0,d0.w),a0
+	cmp.l	#EZ3_EXPANSIONBASE,a0
+	bhs.s	.writez3
 
-		move.l	a0,d1	
-		bmi.s	.zorroIII ; check for zorro ii 
-		move.b	$002(a0),d1
-		bra.s	.doRead
-.zorroIII:	move.b	$100(a0),d1 ; check for zorro 3
-.doRead:	lsr.b	#4,d1
+	move.l	d1,d0
+	lsl.b	#4,d0
+	move.b	d0,$2(a0)
+	move.b	d1,(a0)
+	rts
 
-		moveq.l #0,d0
-		move.b	(a0),d0
-		and.b	#$f0,d0
-		or.b	d1,d0
-		
-		rts
+.writez3:
+	move.w	#$fff,$dff180
 
-; =============== S U B	R O U T	I N E =======================================
+	PUSH
+	move.w	AutoConfWByte-V(a6),d0
+	move.l	#2,d1
+	bsr	binhex
+	bsr	Print
+	POP
 
-ConfigBoard:
-
-		cmp.b	#0,AutoConfMode-V(a6)	
-		beq	.quick
-		PUSH
-		lea	AutoConfZorroData,a0
-		move.l	#2,d1
-		bsr	Print
-		move.l	#$f,d3
-		lea	autoconf-V(a6),a1
-.loopa:		move.b	(a1)+,d0
-		bsr	binhexbyte
-		move.l	#2,d1
-		bsr	Print
-		lea	SpaceTxt,a0
-		bsr	Print
-		dbf	d3,.loopa
-
-		lea	AutoConfAssign,a0
-		move.l	#5,d1
-		bsr	Print
-
-		POP
-.loop:
-		bsr	GetInput
-		cmp.b	#0,BUTTON-V(a6)
-		beq	.loop
-		cmp.b	#1,LMB-V(a6)
-		beq	.assign
-		cmp.b	#1,RMB-V(a6)
-		beq	.noassign
-		move.b	GetCharData-V(a6),d0
-		bclr	#5,d0				; Make it uppercase
-		cmp.b	#"Y",d0
-		beq	.assign
-		cmp.b	#"N",d0
-		beq	.noassign
-
-		bra	.loop
-.assign:	bra	.quick
-.noassign:	bra	ConfigBoard_Shutup
-.quick:
-		move.l	#-1,d0
-		moveq	#$FFFFFF00+ERT_TYPEMASK,d1
-		and.b	er_Type(a0),d1
-		cmp.b	#ERT_ZORROII,d1
-		bne.s	ConfigBoard_Z3
-
-		;;  pass the type byte
-		move.b	er_Type(a0),d0
-		bra	ConfigBoard_Z2
-	
-ConfigBoard_Z3:						; Configure Z3 Memcard
-		PUSH
-		lea	MemCardTxt,a0
-		move.l	#5,d1
-		bsr	Print
-		clr.l	d0
-		move.w	Z3Mem-V(a6),d0
-		asl.l	#8,d0
-		asl.l	#8,d0
-		move.l	d0,d2
-		bsr	binhex
-		move.l	#4,d1
-		bsr	Print
-
-		lea	MinusTxt,a0
-		move.l	#5,d1
-		bsr	Print
-	
-
-		move.l	ZorroSize-V(a6),d0
-
-		add.l	d2,d0
-		move.l	#4,d1
-		bsr	binhex
-		bsr	Print
-
-	;	cmp.l	#$80000000,d2
-	;	bgt	.illegal
-	;	cmp.l	#$80000000,d0
-	;	bgt	.illegal
-		
-		bra	.notillegal
-.illegal:
-		lea	IllegalZ3,a0
-		move.l	#1,d1
-		bsr	Print				
-.notillegal:
-		POP
-		clr.l	d1
-		move.w	Z3Mem-V(a6),d1
-		moveq	#ec_BaseAddress+ExpansionRom_SIZEOF,d0
-		bsr	WriteExpansionByte
+	move.l	d1,d2
+	move.l	d1,d0
+	lsl.b	#4,d0
+	move.b	d0,$100(a0)
+	move.b	d1,(a0)
+	move.l	a1,a0
+	move.l	#$44,d0
+	lea	0(a0,d0.w),a0
+	move.w	d2,(a0)
 
 
-		move.w	Z3Mem-V(a6),d1
-		lsr.l	#8,d1
-
-		moveq	#ec_Z3_HighBase+ExpansionRom_SIZEOF,d0
-		bsr	WriteExpansionByte
-
-		move.l	ZorroSize-V(a6),d0
-		swap	d0
-		add.w	d0,Z3Mem-V(a6)			; Add size of board to get address for next board
-
-		move.l	#0,d0
-		rts
-
-
-ConfigBoard_Z2:
-
-		btst	#5,d0				; Check if this is to be linked to RAM
-		beq	ConfigBoard_Z2_ROM		; no.... jump to shutup.
-		bra	ConfigBoard_Z2_RAM
-
-ConfigBoard_Z2_ROM:
-		btst	#4,d0
-		beq	ConfigBoard_Shutup
-		PUSH
-		lea	RomCardTxt,a0
-		move.l	#5,d1
-		bsr	Print
-		clr.l	d0
-		move.b	Z2RomMem-V(a6),d0
-		asl.l	#8,d0
-		asl.l	#8,d0
-		move.l	d0,d2
-		bsr	binhex
-		move.l	#4,d1
-		bsr	Print
-
-		lea	MinusTxt,a0
-		move.l	#5,d1
-		bsr	Print
-	
-
-		move.l	ZorroSize-V(a6),d0
-		add.l	d2,d0
-		move.l	#4,d1
-		bsr	binhex
-		bsr	Print
-
-.notillegal:
-		POP
-
-		clr.l	d1
-		move.w	Z2Mem-V(a6),d1
-		moveq	#ec_BaseAddress+ExpansionRom_SIZEOF,d0
-		bsr	WriteExpansionByte
-
-		move.b	ZorroSize-V(a6),d0
-		swap	d0
-		add.b	d0,Z2RomMem-V(a6)			; Add size of board to get address for next board
-
-		bra	ConfigBoard_Done
-		
-
-ConfigBoard_Z2_RAM:
-		PUSH
-		lea	MemCardTxt,a0
-		move.l	#5,d1
-		bsr	Print
-		clr.l	d0
-		move.b	Z2Mem-V(a6),d0
-		asl.l	#8,d0
-		asl.l	#8,d0
-		move.l	d0,d2
-		bsr	binhex
-		move.l	#4,d1
-		bsr	Print
-
-		lea	MinusTxt,a0
-		move.l	#5,d1
-		bsr	Print
-	
-
-		move.l	ZorroSize-V(a6),d0
-		add.l	d2,d0
-		move.l	#4,d1
-		bsr	binhex
-		bsr	Print
-
-		cmp.l	#$a00000,d2
-		bgt	.illegal
-		cmp.l	#$a00000,d0
-		bgt	.illegal
-		
-		bra	.notillegal
-.illegal:
-		lea	IllegalZ2,a0
-		move.l	#1,d1
-		bsr	Print				
-.notillegal:
-		POP
-
-;;;  hack to put a Z2 memory card at address 0x200000
-		clr.l	d1
-		move.b	Z2Mem-V(a6),d1
-		moveq	#ec_BaseAddress+ExpansionRom_SIZEOF,d0
-		bsr	WriteExpansionByte
-
-		move.l	ZorroSize-V(a6),d0
-		swap	d0
-		add.b	d0,Z2Mem-V(a6)			; Add size of board to get address for next board
-
-ConfigBoard_Done:
-		move.l	#0,d0
-		rts
-
-ConfigBoard_Shutup:
-		moveq	#ec_Shutup+ExpansionRom_SIZEOF,d0
-		bsr	WriteExpansionByte
-		move.l	#-2,d0
-		rts
-
-; =============== S U B	R O U T	I N E =======================================
-	
+.dowrite:
+	rts
 
 ;hexbytetobin
+
+PrintYes:
+	lea	YES,a0
+	move.l	#2,d1
+	bsr	Print
+	rts
+
+PrintNo:
+	lea	NO,a0
+	move.l	#1,d1
+	bsr	Print
+	rts
 
 ;------------------------------------------------------------------------------------------
 
@@ -11563,6 +11546,89 @@ RTCDay:
 	dc.b	"   Friday",0
 	dc.b	" Saturday",0	
 
+AutoConfBoardTxt:
+	dc.b	$a,"Board #",0
+AutoConfManuTxt:
+	dc.b	$a,"  Manufacturer: ",0
+AutoConfSerTxt:
+	dc.b	"  Serialnumber: ",0
+AutoConfZorTypeTxt:
+	dc.b	$a,"     Zorrotype: ",0
+AutoConfLinkTxt:
+	dc.b	"  Link to system free pool: ",0
+AutoConfAutoBTxt:
+	dc.b	"  Autoboot: ",0
+AutoConfLinked2NextTxt:
+	dc.b	$a,"     Linked to next board: ",0
+AutoConfExtSizeTxt:
+	dc.b	"  Extended size: ",0
+AutoConfSizeTxt:
+	dc.b	"  Size: ",0
+AutoConfBufTxt:
+	dc.b	$a,"  Autoconfigbuffer: ",0
+AutoConfRamCardTxt:
+	dc.b	$a,"    Zorro II Memory detected and assigned to: ",0
+AutoConfRomCardTxt:
+	dc.b	$a,"    Zorro II I/O detected and assigned to: ",0
+AutoConfZ3CardTxt:
+	dc.b	$a,"    Zorro III Card detected and assigned to: ",0
+AutoConfEnableTxt:
+	dc.b	$a,"Assign board? Y)es (LMB) N)o (RMB) (If possible) or ESC)Exit",$a,0
+AutoConfAssignZ2Ram:
+	dc.b	$a,"Assigning RAM from $",0
+AutoConfAssignZ2IO:
+	dc.b	$a,"Assigning I/O from $",0
+AutoConfAssignTo:
+	dc.b	" to $",0
+AutoConfToomuchTxt:
+	dc.b	$a,"  ** ERRROR, looping autoconfig detected. (BUG!) exiting",$a,$a,0
+	EVEN
+
+
+S8MB:
+	dc.b	"8MB",0
+S64k:
+	dc.b	"64KB",0
+S128k:
+	dc.b	"128KB",0
+S256k:
+	dc.b	"256KB",0
+S512k:
+	dc.b	"512KB",0
+S1MB:
+	dc.b	"1MB",0
+S2MB:
+	dc.b	"2MB",0
+S4MB:
+	dc.b	"4MB",0
+S16MB:
+	dc.b	"16MB",0
+S32MB:
+	dc.b	"32MB",0
+S64MB:
+	dc.b	"64MB",0
+S128MB:
+	dc.b	"128MB",0
+S256MB:
+	dc.b	"256MB",0
+S512MB:
+	dc.b	"512MB",0
+S1GB:
+	dc.b	"1GB",0
+SRes:
+	dc.b	"RESERVED",0
+
+	EVEN
+SizeTxtPointer:
+	dc.l	S8MB,S64k,S128k,S256k,S512k,S1MB,S2MB,S4MB
+SizePointer:
+	dc.l	$800000,$10000,$20000,$40000,$80000,$100000,$200000,$400000
+ExtSizeTxtPointer:
+	dc.l	S16MB,S32MB,S64MB,S128MB,S256MB,S512MB,S1GB,SRes
+ExtSizePointer:
+	dc.l	$1000000,$2000000,$4000000,$8000000,$10000000,$20000000,$40000000,$80000000
+
+	
 DividerTxt:
 	dc.b	"--------------------------------------------------------------------------------",0
 EmptyRowTxt:
@@ -11678,82 +11744,6 @@ NotEnoughChipTxt:
 	dc.b	"Not enough chipmem detected",$a,$a,0
 ShadowChiptxt:
 	dc.b	$a,$d,"Chipmem Shadowram detected, guess there is no more chipmem, stopping here",$a,$d,0
-AutoConfTxt:
-	dc.b	2,"Doing autoconfigstuff on Zorro slots (ONLY ONCE!)",$a,$a,0
-AutoConfTxt2:
-	dc.b	2,"Doing Detailed autoconfigstuff on Zorro slots (ONLY ONCE!)",$a,$a,0
-AutoConfBoard:
-	dc.b	"Board number: ",0
-AutoConfManu:
-	dc.b	"  Manufacturer number: ",0
-AutoConfSerial:
-	dc.b	"  Serialnumber: ",0
-AutoConfZorro:
-	dc.b	"    Zorrotype: ",0
-AutoConfMem:
-	dc.b	"  Link to system free pool: ",0
-AutoConfAutoboot:
-	dc.b	"  Autoboot ",0
-AutoConfLink:
-	dc.b	"    Linked to next board: ",0
-AutoConfSize:
-	dc.b	"  Size: ",0
-AutoConfAssign:
-	dc.b	$a,"Assign board? Y)es (LMB) or N)o (RMB) (If possible)",$a,0
-AutoConfZorroData:
-	dc.b	$a,"Dump of Zorrodata: ",0
-AutoConfDone:
-	dc.b	2,"--- NO MORE BOARDS AVAIBLE! ---",$a,0
-S8MB:
-	dc.b	"8MB",0
-S64k:
-	dc.b	"64KB",0
-S128k:
-	dc.b	"128KB",0
-S256k:
-	dc.b	"256KB",0
-S512k:
-	dc.b	"512KB",0
-S1MB:
-	dc.b	"1MB",0
-S2MB:
-	dc.b	"2MB",0
-S4MB:
-	dc.b	"4MB",0
-S16MB:
-	dc.b	"16MB",0
-S32MB:
-	dc.b	"32MB",0
-S64MB:
-	dc.b	"64MB",0
-S128MB:
-	dc.b	"128MB",0
-S256MB:
-	dc.b	"256MB",0
-S512MB:
-	dc.b	"512MB",0
-S1GB:
-	dc.b	"1GB",0
-SRes:
-	dc.b	"RESERVED",0
-
-MemCardTxt:
-	dc.b	$a,"    Memory detected and assigned to: ",0
-RomCardTxt:
-	dc.b	$a,"    ROM detected and assigned to: ",0
-	EVEN
-SizePointer:
-	dc.l	S8MB,S64k,S128k,S256k,S512k,S1MB,S2MB,S4MB
-SizePointer2:
-	dc.l	$800000,$10000,$20000,$40000,$80000,$100000,$200000,$400000
-SizePointer3:
-	dc.l	S16MB,S32MB,S64MB,S128MB,S256MB,S512MB,S1GB,SRes
-SizePointer4:
-	dc.l	$1000000,$2000000,$4000000,$8000000,$10000000,$20000000,$40000000,$80000000
-IllegalZ2:
-	dc.b	$a,"  ---- ILLEGAL Configuration. Memory outside Zorro II Area!!",$a,0
-IllegalZ3:
-	dc.b	$a,"  ---- ILLEGAL Configuration. Memory outside Zorro III Area!!",$a,0
 bytehextxt:
 	dc.b	"000102030405060708090A0B0C0D0E0F"
 	dc.b	"101112131415161718191A1B1C1D1E1F"
@@ -12397,18 +12387,6 @@ GfxTestBpl:				; Pointers to bitplanes for gfxtest
 	dc.l	0,0,0,0,0,0,0,0
 SHIT:
 	dc.l	0			; SHITData
-ZorroSize:
-	dc.l	0
-AutoConfMode:
-	dc.b	0			; Type of autoconf. non 0 = detailed
-Z2Mem:
-	dc.b	0			; Position of Z2 memarea to allocate
-Z2RomMem:
-	dc.b	0			; Position of Z2 rommemarea to allocate
-	EVEN
-Z3Mem:
-	dc.w	0			; Position of Z3 memarea to allocate
-
 C:
 	EVEN
 MenuCopper:
@@ -12427,8 +12405,34 @@ AudioWaves:
 DummySprite:
 	dc.l	0
 
-autoconf:	blk.b	20,0
 
+AutoConfMode:
+	dc.b	0			; if set to anything but 0, a detailed (and more manual) autoconfig will be done.
+	EVEN
+AutoConfBuffer:
+	blk.b	20,0			; Autoconfigbuffer.
+	EVEN
+AutoConfZ2Ram:
+	dc.b	0			; AutoConf where to config ram to next Z2 card
+AutoConfZ2IO:
+	dc.b	0			; AutoConf where to config rom to next Z2 card
+	EVEN
+AutoConfZ3:
+	dc.w	0			; AutoConf where to config to next Z3 card
+AutoConfType:
+	dc.b	0			; If set to 0, no board was found
+					; 1 = ROM
+					; 2 = RAM
+					; 3 = Z2Space, not RAM
+AutoConfZorro:
+	dc.b	0			; Should be set to 0 for Zorro II and 1 for Zorro III
+	EVEN
+AutoConfSize:
+	dc.l	0			; Size of current board
+AutoConfWByte:
+	dc.w	0			; "Byte" to write to autoconfigboards (Word for Z3)
+AutoConfAddr:
+	dc.l	0			; Address to configure board to.
 Bpl1str:
 	dc.l	0			; Space for the "BPL1" string
 Bpl1:
