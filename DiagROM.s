@@ -1,4 +1,5 @@
-;APS00000036000000360002B45A00000036000000360000003600000036000000360000003600000036
+;APS00000036000000360002B8ED00000036000000360000003600000036000000360000003600000036
+
 ;
 ;
 ; DiagROM by John "Chucky" Hertell
@@ -5175,8 +5176,8 @@ CheckDetectedMBMem:
 	clr.l	FirstMBMem-V(a6)
 	clr.l	MBMemSize-V(a6)
 
-	lea	$40000000,a0
-	lea	$80000000,a1
+	lea	$8000000,a0
+	lea	$10000000,a1
 	bsr	DetectMem
 
 	move.l	a0,FirstMBMem-V(a6)
@@ -5204,6 +5205,41 @@ CheckDetectedMBMem:
 .nomem3:
 	add.b	#1,nomem-V(a6)
 .next3:
+
+	bsr	.ClearTop
+	clr.b	temp-V(a6)				; Clear tempvariable
+	clr.l	FirstMBMem-V(a6)
+	clr.l	MBMemSize-V(a6)
+
+	lea	$40000000,a0
+	lea	$80000000,a1
+	bsr	DetectMem
+
+	move.l	a0,FirstMBMem-V(a6)
+	move.l	d0,MBMemSize-V(a6)
+
+	cmp.l	#0,d0					; Check if we had nomem
+	beq	.nomem4
+
+	clr.b	temp-V(a6)				; Clear tempvariable
+	clr.l	d0
+	clr.l	d1
+	bsr	SetPos
+
+	lea	MemtestDetMBMemTxtZ,a0
+	bsr	.CheckPrint
+	clr.l	d2
+	move.l	FirstMBMem-V(a6),d0
+	move.l	d0,d1
+	add.l	MBMemSize-V(a6),d1
+	move.b	#0,CheckMemNoShadow-V(a6)
+	move.l	#2,d2
+	bsr	CheckMemory
+	bra	.next4
+
+.nomem4:
+	add.b	#1,nomem-V(a6)
+.next4:
 
 	cmp.b	#3,nomem-V(a6)				; Check if we had no memory. put errormessage
 	bne	.wehadmem
@@ -8071,28 +8107,20 @@ oki:
 ;------------------------------------------------------------------------------------------
 
 AutoConfig:					; Do Autoconfigmagic
-	bra	MainMenu
-						; ok for now.. autoconfig is screwed. lets do it right this time instead..
-						
-;	bsr	ClearScreen
-;	lea	AutoConfTxt,a0
-;	move.l	#4,d1
-;	bsr	Print
-;	move.b	#0,AutoConfMode-V(a6)		; Set that we want a fast autoconfig mode
-;	lea	E_EXPANSIONBASE,a4		; Load expansionbase for Z2
-;	bsr	zorro_tests
+	bsr	ClearScreen
+	move.b	#0,AutoConfMode-V(a6)		; Set that we do not want a more detailed autoconfig mode
+	bsr	DoAutoconfig
 
-;	lea	AnyKeyMouseTxt,a0
-;	move.l	#3,d1
-;	bsr	Print
-;	bsr	WaitButton
-;	bra	MainMenu
+	lea	AnyKeyMouseTxt,a0
+	move.l	#3,d1
+	bsr	Print
+	bsr	WaitButton
+	bra	MainMenu
 
 AutoConfigDetail:				; Do Autoconfigmagic
 	bsr	ClearScreen
 	move.b	#1,AutoConfMode-V(a6)		; Set that we want a more detailed autoconfig mode
 	bsr	DoAutoconfig
-	bsr	WaitButton
 
 	lea	AnyKeyMouseTxt,a0
 	move.l	#3,d1
@@ -8158,6 +8186,12 @@ DoAutoconfig:
 	move.w	#$4000,AutoConfZ3-V(a6)	; Set defaultvalues for different cardtypes
 	move.b	#$20,AutoConfZ2Ram-V(a6)
 	move.b	#$e9,AutoConfZ2IO-V(a6)
+
+	lea	AutoConfZ2Txt,a0
+	move.l	#6,d1
+	bsr	Print
+
+
 	move.l	#1,d6			; Clear boardnumber
 .loopz2:
 	lea	E_EXPANSIONBASE,a0
@@ -8168,9 +8202,15 @@ DoAutoconfig:
 	add.l	#1,d6
 	cmp.l	#32,d6			; if we hit 32 boards.. something is wrong, exit
 	bgt	.toomuch
-
+	cmp.b	#0,AutoConfExit-V(a6)	; Check the force exitflag
+	bne	.noz3
 	bra	.loopz2
 .noz2:
+
+
+	lea	AutoConfZ3Txt,a0
+	move.l	#6,d1
+	bsr	Print
 
 .loopz3:
 	lea	EZ3_EXPANSIONBASE,a0
@@ -8181,18 +8221,15 @@ DoAutoconfig:
 	add.l	#1,d6
 	cmp.l	#32,d6			; if we hit 32 boards.. something is wrong, exit
 	bgt	.toomuch
+	cmp.b	#0,AutoConfExit-V(a6)	; Check the force exitflag
+	bne	.noz3
 
 	bra	.loopz3
-
-
-	lea	NewLineTxt,a0		; Debugdata KUK!
-	bsr	Print
-	move.l	d7,d0
-	bsr	bindec
-	move.l	#2,d1
-	bsr	Print
-
 .noz3:
+
+	lea	AutoConfAllTxt,a0
+	move.l	#6,d1
+	bsr	Print
 
 	rts	
 .toomuch:
@@ -8224,14 +8261,15 @@ DoAutoconfig:
 	bls.s	.ReadRomLoop
 
 	move.l	a4,a2			; Restore zorrobuffer
-	cmp.b	#0,AutoConfMode-V(a6)
-	beq	.nodetail
 
 	tst.b	er_Reserved03(a2)	; Check if it is 0, if not, we have no card
 	bne	.NoCard
 
 	tst	er_Manufacturer(a2)	; Check if it is 0, if so, we have no card
 	beq	.NoCard
+
+	cmp.b	#0,AutoConfMode-V(a6)
+	beq	.nodetail
 
 
 	PUSH
@@ -8446,7 +8484,6 @@ DoAutoconfig:
 	move.b	$2(a0),d1
 	bra	.doRead
 .Z3:
-	move.w	#$fff,$dff180
 	move.b	$100(a0),d1
 .doRead:
 	lsr.b	#4,d1		; Strip away so we just keep a nibble
@@ -8457,6 +8494,7 @@ DoAutoconfig:
 	rts
 
 .WriteByte:				; Write configbyte to configure card. (ok WORD for Z3!)
+	clr.b	AutoConfIllegal-V(a6)	; Clear the illegalflag
 	clr.l	d0
 	lea	NewLineTxt,a0
 	bsr	Print
@@ -8479,6 +8517,15 @@ DoAutoconfig:
 	swap	d0
 	move.l	d0,AutoConfAddr-V(a6)
 	add.l	AutoConfSize-V(a6),d0
+	cmp.l	#$a00002,d0
+	blo	.writenoz2illegal
+	PUSH
+	lea	AutoConfIllegalTxt,a0
+	move.l	#1,d1
+	bsr	Print
+	move.b	#1,AutoConfIllegal-V(a6)	; Set the illegal flag
+	POP
+.writenoz2illegal:
 	swap	d0
 	move.b	d0,AutoConfZ2Ram-V(a6)
 	lea	E_EXPANSIONBASE,a1
@@ -8493,6 +8540,17 @@ DoAutoconfig:
 	swap	d0
 	move.l	d0,AutoConfAddr-V(a6)
 	add.l	AutoConfSize-V(a6),d0
+	cmp.l	#$c0000002,d0
+	blo	.writenoz3illegal
+	PUSH
+	lea	AutoConfIllegalTxt,a0
+	move.l	#1,d1
+	bsr	Print
+	move.b	#1,AutoConfIllegal-V(a6)	; Set the illegal flag
+	POP
+.writenoz3illegal:
+
+
 	swap	d0
 	move.b	d0,AutoConfZ2Ram-V(a6)
 	lea	E_EXPANSIONBASE,a1
@@ -8531,6 +8589,8 @@ DoAutoconfig:
 	bra	.Write
 
 .Write:					; OK! we have a card, not Z3 or Z2io. it must be Z2 RAM!
+	cmp.b	#0,AutoConfIllegal-V(a6)	; Check if the illegalfag was set
+	bne	.WriteNoAssign			; it was not 0, so it is set, shutdown card
 	move.l	d1,d3
 	move.l	#2,d1
 	bsr	Print
@@ -8557,15 +8617,16 @@ DoAutoconfig:
 	move.l	#6,d1
 	bsr	Print
 
-	move.l	a1,a0			; Set correct Expansionbase
+	lea	NewLineTxt,a0
+	bsr	Print
 
-;	bra	.WriteFast		; fast config
 	cmp.b	#0,AutoConfMode-V(a6)
 	beq	.WriteFast
 	lea	AutoConfEnableTxt,a0
 	move.l	#2,d1
 	bsr	Print
 
+	clr.b	AutoConfExit-V(a6)	; Clear the force exitflag
 .WriteLoop:
 	bsr	GetInput	; Get inputdata
 	cmp.b	#0,BUTTON-V(a6)
@@ -8580,18 +8641,24 @@ DoAutoconfig:
 	beq	.WriteFast
 	cmp.b	#"N",d7
 	beq	.WriteNoAssign
+	cmp.b	#$1b,d7
+	beq	.forceexit
 	bra	.WriteLoop
 
 .WriteFast:
+	move.l	a1,a0			; Set correct Expansionbase
 	move.l	d3,d1
 	bsr	.WriteCard
 	rts
 .WriteNoAssign:
+	move.l	a1,a0			; Set correct Expansionbase
 	moveq	#ec_Shutup+ExpansionRom_SIZEOF,d0
 	bsr	.WriteCard
 	move.l	#-2,d0
 .exit:	rts
-	
+.forceexit:
+	move.b	#1,AutoConfExit-V(a6)	; Set force exit flag
+	rts	
 .WriteCard:
 	move.l	#ec_BaseAddress+ExpansionRom_SIZEOF,d0
 	clr.l	d1
@@ -8600,7 +8667,7 @@ DoAutoconfig:
 	cmp.b	#0,AutoConfMode-V(a6)
 	beq	.WriteCardFast
 .WriteCardFast:
-	lsl.l	#2,d0		; Multiply with 4
+	lsl.l	#2,d0			; Multiply with 4
 	move.l	a0,a1
 	lea.l	0(a0,d0.w),a0
 
@@ -8615,15 +8682,6 @@ DoAutoconfig:
 	rts
 
 .writez3:
-	move.w	#$fff,$dff180
-
-	PUSH
-	move.w	AutoConfWByte-V(a6),d0
-	move.l	#2,d1
-	bsr	binhex
-	bsr	Print
-	POP
-
 	move.l	d1,d2
 	move.l	d1,d0
 	lsl.b	#4,d0
@@ -11308,7 +11366,9 @@ MemtestDetMBMemTxt:
 MemtestDetMBMemTxt2:
 	dc.b	" Detecting CPU Card memory: Detected: ",0
 MemtestDetMBMemTxt3:
-	dc.b	" Detecting Z2 memoryarea: (NON Autoconfig) Detected: ",0
+	dc.b	" Detecting Z2 memoryarea: Detected: ",0
+MemtestDetMBMemTxtZ:
+	dc.b	" Detecting Z3 memoryarea: Detected: ",0
 MemtestExtMBMemTxt:
 	dc.b	"Scanning for memory on all fastmem-areas (no autoconfig mem will be scanned)",0
 MemtestNORAM:
@@ -11546,6 +11606,14 @@ RTCDay:
 	dc.b	"   Friday",0
 	dc.b	" Saturday",0	
 
+AutoConfZ2Txt:
+	dc.b	"Scanning Zorro II Area",$a,0
+AutoConfZ3Txt:
+	dc.b	"Scanning Zorro III Area",$a,0
+AutoConfIllegalTxt:
+	dc.b	$a,"  -- ILLEGAL CONFIGURATION, ZORROAREA OVERFLOW - SHUTTING DOWN CARD",$a,0
+AutoConfAllTxt:
+	dc.b	$a,"All boards done!",$a,0	
 AutoConfBoardTxt:
 	dc.b	$a,"Board #",0
 AutoConfManuTxt:
@@ -12424,6 +12492,10 @@ AutoConfType:
 					; 1 = ROM
 					; 2 = RAM
 					; 3 = Z2Space, not RAM
+AutoConfExit:
+	dc.b	0			; If anything than 0, force exit of loop
+AutoConfIllegal:
+	dc.b	0			; if anything than 0, cardconfig was illegal, force shutdown of card
 AutoConfZorro:
 	dc.b	0			; Should be set to 0 for Zorro II and 1 for Zorro III
 	EVEN
