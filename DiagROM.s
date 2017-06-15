@@ -1,4 +1,4 @@
-;APS00000036000000360002B8ED00000036000000360000003600000036000000360000003600000036
+;APS00000036000000360002BCCB00000036000000360000003600000036000000360000003600000036
 
 ;
 ;
@@ -53,7 +53,7 @@ rom_base:	equ $f80000		; Originate as if data is in ROM
 ; Then some different modes for the assembler
 
 
-rommode =	1				; Set to 1 if to assemble as being in ROM
+rommode =	0				; Set to 1 if to assemble as being in ROM
 debug = 	0				; Set to 1 to enable some debugshit in code
 amiga = 	1 				; Set to 1 to create an amiga header to write the ROM to disk
 
@@ -5436,6 +5436,14 @@ CheckMemEdit:
 	move.l	#2,d1
 	bsr	Print
 
+	move.l	#34,d0
+	move.l	#1,d1
+	bsr	SetPos
+	lea	OFF,a0
+	move.l	#3,d1
+	bsr	Print
+;	clr.b	CpuCache-V(a6)			; Set status to off
+
 	move.b	#0,CheckMemEditXpos-V(a6)
 	move.b	#0,CheckMemEditYpos-V(a6)	; Clear X and Y positions
 	move.b	#0,CheckMemEditOldXpos-V(a6)
@@ -5484,6 +5492,9 @@ CheckMemEdit:
 	cmp.b	#"R",d1
 	beq	.Refresh
 
+	cmp.b	#"H",d1
+	beq	.Cache
+
 
 	bsr	GetHex				; OK, convert it to hex. if anything is left now, we have a hexdigit that
 	cmp.b	#"0",d0
@@ -5531,9 +5542,6 @@ CheckMemEdit:
 .nohex:
 .keydone:
 	bra	.loop
-
-
-
 
 .getcursoradr:					; Get memoryaddress of X, Y pos
 						; INDATA:
@@ -5709,6 +5717,29 @@ CheckMemEdit:
 	bsr	.ClearCommandRow		; Clear the "goto" row.
 	bra	.loop
 
+.Cache:	bchg	#1,CPUCache-V(a6)		; Change status of Cacheflag
+	clr.l	d0
+
+	move.l	#34,d0
+	move.l	#1,d1
+	bsr	SetPos
+
+	move.b	CPUCache-V(a6),d0
+	cmp.b	#0,d0				; is it off?
+	beq	.CacheOff
+						; no, it is on
+	lea	ON,a0
+	move.l	#2,d1
+	bsr	Print
+	bsr	EnableCache
+	bra	.Refresh
+.CacheOff:
+	lea	OFF,a0
+	move.l	#3,d1
+	bsr	Print
+	bsr	DisableCache
+	bra	.Refresh
+	
 .Refresh:
 	clr.b	CheckMemEditCharPos-V(a6)	; Clear charpos
 	move.l	CheckMemEditScreenAdr-V(a6),a0	; Get address
@@ -6984,6 +7015,23 @@ BlitterClear:
 	POP
 	rts
 
+EnableCache:
+	PUSH
+	move.l	#$0808,d1
+	movec	d1,CACR
+	move.l	#$0101,d1
+	movec	d1,CACR
+	POP
+	rts
+
+DisableCache:
+	PUSH
+	move.l	#$0808,d1
+	movec	d1,CACR
+	move.l	#0,d1
+	movec	d1,CACR
+	POP
+	rts
 
 ;------------------------------------------------------------------------------------------
 
@@ -8695,6 +8743,23 @@ DoAutoconfig:
 
 .dowrite:
 	rts
+
+
+;------------------------------------------------------------------------------------------
+
+DiskTest:
+	bsr	InitScreen
+	move.w	#8,MenuNumber-V(a6)
+	move.b	#1,PrintMenuFlag-V(a6)
+	bra	MainLoop
+	
+DiskdriveTest:
+	bsr	ClearScreen
+.loop:
+	bsr	GetInput
+	cmp.b	#1,BUTTON-V(a6)
+	bne.s	.loop
+	bra	MainMenu
 
 ;hexbytetobin
 
@@ -11184,11 +11249,11 @@ SerText:
 	dc.l	BpsNone,Bps2400,Bps9600,Bps38400,Bps115200,BpsNone
 	
 Menus:					; Pointers to the menus
-	dc.l	MainMenuItems,0,AudioMenuItems,MemtestMenuItems,IRQCIAtestMenuItems,GFXtestMenuItems,PortTestMenuItems,OtherTestItems,0,0
+	dc.l	MainMenuItems,0,AudioMenuItems,MemtestMenuItems,IRQCIAtestMenuItems,GFXtestMenuItems,PortTestMenuItems,OtherTestItems,DiskTestMenuItems,0,0
 MenuCode:				; Pointers to pointers of the menus.
-	dc.l	MainMenuCode,0,AudioMenuCode,MemtestMenuCode,IRQCIAtestMenuCode,GFXtestMenuCode,PortTestMenuCode,OtherTestCode,0,0
+	dc.l	MainMenuCode,0,AudioMenuCode,MemtestMenuCode,IRQCIAtestMenuCode,GFXtestMenuCode,PortTestMenuCode,OtherTestCode,DiskTestMenuCode,0,0
 MenuKeys:
-	dc.l	MainMenuKey,0,AudioMenuKey,MemtestMenuKey,IRQCIAtestMenuKey,GFXtestMenuKey,PortTestMenuKey,OtherTestKey,0,0
+	dc.l	MainMenuKey,0,AudioMenuKey,MemtestMenuKey,IRQCIAtestMenuKey,GFXtestMenuKey,PortTestMenuKey,OtherTestKey,DiskTestMenuKey,0,0
 
 MainMenuText:
 	dc.b	"                             DiagROM "
@@ -11212,7 +11277,7 @@ MainMenu5:
 MainMenu6:
 	dc.b	"5 - Porttests",0
 MainMenu7:
-	dc.b	"6 - Diskdrivetests",0
+	dc.b	"6 - Drivetests",0
 MainMenu8:
 	dc.b	"7 - Keyboardtests",0
 MainMenu9:
@@ -11223,7 +11288,7 @@ MainMenu10:
 MainMenuItems:
 	dc.l	MainMenuText,MainMenu1,MainMenu2,MainMenu3,MainMenu4,MainMenu5,MainMenu6,MainMenu7,MainMenu8,MainMenu9,MainMenu10,0,0
 MainMenuCode:
-	dc.l	SystemInfoTest,AudioMenu,MemtestMenu,IRQCIAtestMenu,GFXtestMenu,PortTestMenu,NotImplemented,KeyBoardTest,OtherTest,Setup
+	dc.l	SystemInfoTest,AudioMenu,MemtestMenu,IRQCIAtestMenu,GFXtestMenu,PortTestMenu,DiskTest,KeyBoardTest,OtherTest,Setup
 MainMenuKey:	; Keys needed to choose menu. first byte keykode 2:nd byte serialcode.
 	dc.b	"0","1","2","3","4","5","6","7","8","9","S",0
 NotImplTxt:
@@ -11423,7 +11488,7 @@ CheckMemDeadTxt:
 	dc.b	"Dead Block start at ",0
 CheckMemEditTxt:
 	dc.b	"  Manual Memoryedit. BE WARNED, EVERYTHING HAPPENS IN REALTIME! NO PROTECTION!",$a
-	dc.b	"G)oto address  R)efresh    ESC)Main Menu",$a,0
+	dc.b	"G)oto address  R)efresh  H)Cache:      ESC)Main Menu",$a,0
 CheckMemEditGotoTxt:
 	dc.b	"Enter address to dump memory from: $",0
 CheckMemAdrTxt:
@@ -11541,6 +11606,21 @@ PortTestMenuCode:
 	dc.l	NotImplemented,NotImplemented,PortTestJoystick,MainMenu
 PortTestMenuKey:
 	dc.b	"1","2","3","9",0
+
+
+DiskTestText:
+	dc.b	2,"Disktests",$a,$a,0
+DiskTestMenu1:
+	dc.b	"1 - Diskdrivetest",0
+DiskTestMenu2:
+	dc.b	"9 - Mainmenu",0
+	EVEN
+DiskTestMenuItems:
+	dc.l	DiskTestText,DiskTestMenu1,DiskTestMenu2,0
+DiskTestMenuCode:
+	dc.l	DiskdriveTest,MainMenu
+DiskTestMenuKey:
+	dc.b	"1","9",0
 
 PortJoyTest:
 	dc.b	2,"Joystickport tests",$a,$a,0
@@ -12062,7 +12142,8 @@ keynew:
 	dc.b	0			; if 1 the keypress is new
 keyrepeat:
 	dc.b	0			; if 1 the key is still pressed down
-
+CPUCache:
+	dc.b	0			; Status of CPU Cache, 0 = off
 	EVEN
 	
 ChipStart:
