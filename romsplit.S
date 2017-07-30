@@ -1,4 +1,4 @@
-;APSFFD31A8FFFD31A8FFFD31A8FFFD31A8FFFD31A8FFFD31A8FFFD31A8FFFD31A8FFFD31A8F585447A6
+;APSFFD31A8FFFD31A8FFFD31A8FFFD31A8FFFD31A8FFFD31A8FFFD31A8FFFD31A8FFFD31A8F58544B15
 
 ; Simple program
 ; loads file "DiagROM" and saves three files:
@@ -8,7 +8,7 @@
 
 MEMF_FAST = 4
 SIZE = 512*1024
-
+SIZE64K =	64*1024
 
         move.l  4.w,a6
 	lea	Dos,a1
@@ -28,6 +28,7 @@ SIZE = 512*1024
 	move.l	d0,inadr
 
 	move.l	#SIZE,d1
+	move.l	d1,FileSize
 	move.l	#512*1024,d0
 	bsr	AllocateMemory		; My own memoryallocateroutine that can be easly freed with just one function for all allocations.
 
@@ -56,6 +57,32 @@ SIZE = 512*1024
 	bsr	ByteSwap
 
 	lea	Filename32lo,a0
+	bsr	SaveFile
+	cmp.l	#0,d0
+	bne	Error
+
+
+	lea	infilea1k,a0
+	bsr	LoadFile
+
+	cmp.b	#0,end
+	bne	Error
+
+	move.l	d0,inadr
+
+	move.l	#SIZE64K/2,FileSize
+
+	bsr	CopyEven
+
+
+	lea	FilenameA1kEven,a0
+	bsr	SaveFile
+	cmp.l	#0,d0
+	bne	Error
+
+	bsr	CopyOdd
+
+	lea	FilenameA1kOdd,a0
 	bsr	SaveFile
 	cmp.l	#0,d0
 	bne	Error
@@ -124,7 +151,6 @@ CopyLo:
 	blt	.loop
 	rts
 
-
 ByteSwap:
 	clr.l	d0
 	move.l	workadr,a0
@@ -137,6 +163,33 @@ ByteSwap:
 	cmp.l	#SIZE,d0
 	blt	.loop
 	rts
+
+
+CopyEven:
+	clr.l	d0
+	move.l	inadr,a0
+	move.l	workadr,a1
+.loop:
+	move.b	(a0),(a1)+
+	addi.l	#2,a0
+	add.l	#2,d0
+	cmp.l	#SIZE64K,d0
+	blt	.loop
+	rts
+
+CopyOdd:
+	clr.l	d0
+	move.l	inadr,a0
+	move.l	workadr,a1
+.loop:
+	move.b	1(a0),(a1)+
+	addi.l	#2,a0
+	add.l	#2,d0
+	cmp.l	#SIZE64K,d0
+	blt	.loop
+	rts
+
+
 
 ;----------------------------------------
 
@@ -368,7 +421,7 @@ SaveFile:
 	move.l	d0,.Peekare
 	move.l	d0,d1
 	move.l	workadr,d2
-	move.l	#SIZE,d3
+	move.l	FileSize,d3
 	jsr	-48(a6)
 
 
@@ -395,7 +448,9 @@ SaveFile:
 .Errortext:
 	dc.b	$a,"ERROR SAVING FILE",$a,0
 	
-
+FileSize:
+	dc.l	0
+	
 ;----------------------------------------
 
 CheckLen:					;Checks length of file
@@ -453,18 +508,28 @@ Filename32hi:
 	dc.b	"32bitHI.bin",0
 Filename32lo:
 	dc.b	"32bitLO.bin",0
+FilenameA1kEven:
+	dc.b	"A1kEVEN.bin",0
+FilenameA1kOdd:
+	dc.b	"A1kODD.bin",0
+	
 
 InitTxt:
-	dc.b	"Filesplitter V0.1 by John (Chucky) Hertell",$a,$a
+	dc.b	"Filesplitter V0.2 by John (Chucky) Hertell",$a,$a
 	dc.b	"Simply reads the file indata.bin that should be a binary file for Kickstart ROM and splits it for burning",$a
 	dc.b	"This software assumes 512MB Roms and will make 32 bit roms 2x512MB files with duplicate data",$a,$a
 	dc.b	"Produces 3 files:",$a
 	dc.b	" 16bit.bin - byteswapped image for burning 16 bit eproms",$a
 	dc.b	" 32bitHI.bin - byteswapped image of high word for burning images for 32Bit",$a
-	dc.b	" 32bitLO.bin - byteswapped image of low word for burning images for 32Bit",$a,$a,0
+	dc.b	" 32bitLO.bin - byteswapped image of low word for burning images for 32Bit",$a,$a
+	dc.b	"AND if DiagROMA1k file exists it also creates:",$a,$a
+	dc.b	" A1kEVEN.bin - Image for EVEN bytes",$a
+	dc.b	" A1kODD.bin - Image for ODD bytes",$a,$a,0
 
 infile:
 	dc.b	"DiagROM",0
+infilea1k:
+	dc.b	"DiagROMA1k",0
 	
 
 outmem:

@@ -1,4 +1,4 @@
-;APS00000034000000340002CAA100000034000000340000003400000034000000340000003400000034
+;APS00000034000000340002CC0400000034000000340000003400000034000000340000003400000034
 ;
 ;
 ; DiagROM by John "Chucky" Hertell
@@ -53,6 +53,7 @@ rom_base:	equ $f80000		; Originate as if data is in ROM
 
 
 rommode =	1				; Set to 1 if to assemble as being in ROM
+a1k =		1				; Set to 1 if to assemble as for being used on A1000 (64k memrestriction)
 debug = 	0				; Set to 1 to enable some debugshit in code
 amiga = 	1 				; Set to 1 to create an amiga header to write the ROM to disk
 
@@ -91,7 +92,6 @@ HIRESSize:	equ	80*512
 						; If we are in ROM Mode and start.
 						; just save the file to disk.
 	ifne	amiga
-	
 SaveFile:
 	lea	.filnamn,a5
 	move.l	$4,a6
@@ -123,12 +123,22 @@ SaveFile:
 .Peekare:
 	dc.l	0
 .filnamn:
-	dc.b	"DiagROM/DiagROM",0
+	ifeq	a1k
+		dc.b	"DiagROM/DiagROM",0
+	else
+		dc.b	"DiagROM/DiagROMA1k",0
+	endc
 Dos:
 	dc.b	"dos.library",0
 
 a:	equ $180000		; YES! this is as dirty as yesterdays underwear, but needed..  do not do this if you care about other running stuff.. OK?
+
+		ifeq	a1k
 b:	equ a+512*1024
+		else
+b:	equ a+64*1024
+		endc
+
 	endc			; end the amiga writer header.
 
 	org rom_base		; Originate as if data is in ROM
@@ -4769,6 +4779,8 @@ CheckOnOff:					; Checks if a0 is pointing to a variable that is on or off
 	
 
 AudioMod:
+	ifeq a1k
+
 	bsr	FilterOFF
 
 	bsr	ClearScreen
@@ -5119,6 +5131,13 @@ AudioModStatus:
 						; move.l WILL crash on non 020+ machines
 	POP
 	rts
+
+
+	else
+
+	bra	Not1K
+
+	endc
 
 ;------------------------------------------------------------------------------------------
 
@@ -6683,6 +6702,8 @@ GFXtestMenu:
 	bra	MainLoop
 
 GFXTestScreen:
+	ifeq	a1k
+	
 	bsr	ClearScreen
 	move.l	#EndTestPic-TestPic,d0
 	move.l	d0,d2
@@ -6709,6 +6730,11 @@ GFXTestScreen:
 	bsr	SetMenuCopper
 	bra	GFXtestMenu
 
+	else
+
+	bra	Not1K
+
+	endc
 
 GFXtest320x200:
 
@@ -8923,6 +8949,15 @@ NotImplemented:
 	bsr	Print
 	
 	bsr	DebugScreen
+	bsr	WaitButton
+	bra	MainMenu
+
+
+Not1K:
+	bsr	ClearScreen
+	lea	NotA1kTxt,a0
+	move.l	#1,d1
+	bsr	Print
 	bsr	WaitButton
 	bra	MainMenu
 
@@ -11507,6 +11542,8 @@ MainMenuKey:	; Keys needed to choose menu. first byte keykode 2:nd byte serialco
 	dc.b	"0","1","2","3","4","5","6","7","8","9","s",0
 NotImplTxt:
 	dc.b	2,"This function is not implemented yet. Anyday.. soon(tm), Thursday?",$a,$a,0
+NotA1kTxt:
+	dc.b	2,"This function is not available on A1000 version",$a,$a,0
 AnyKeyMouseTxt:
 	dc.b	2,"Press any key/mouse to continue",0
 SetupTxt:
@@ -12265,12 +12302,21 @@ Octant_Table:
 	dc.b	3*4+1
 	dc.b	7*4+1
 
+
 Music:
+	ifeq	a1k
 	incbin	"DiagROM/Music.MOD"
+
+	endc
+
 	EVEN
+
+
+	ifeq	a1k
 TestPic:
 	incbin	"DiagRom/TestPIC.raw"
 EndTestPic:
+	endc
 	EVEN
 EndMusic:
 	dc.b	"This is the brutal end of this ROM, everything after this are just pure noise.    End of Code...",0
@@ -12278,6 +12324,24 @@ EndMusic:
 
 
 EndRom:
+	ifne	rommode
+
+		ifeq	a1k
+	blk.b	$80000-(EndRom-START)-16,0		; Crapdata that needs to be here
+		else
+	blk.b	$10000-(EndRom-START)-16,0		; Crapdata that needs to be here
+		endc
+	dc.l	$00180019,$001a001b,$001c001d,$001e001f	; or IRQ will TOTALLY screw up on machines with 68000-68010
+
+	endc
+
+
+
+ROMEND:
+
+;		ifeq	rommode
+
+
 		ifeq	rommode
 	section data,code_c
 
@@ -12290,6 +12354,9 @@ BeforeUsed:
 
 
 	EVEN
+
+
+
 ; Here you put REFERENCES to variabes in RAM. remember that you cannot know what is stored in
 ; this part of memory. so you have to set any default values in the code or data will be random.
 
@@ -12848,19 +12915,6 @@ ptplay:
 EndData:
 	dc.l	0
 
-	ifne	rommode
-
-BITTEREND:
-	blk.b	$80000-(BITTEREND-START)-16,0		; Crapdata that needs to be here
-	dc.l	$00180019,$001a001b,$001c001d,$001e001f	; or IRQ will TOTALLY screw up on machines with 68000-68010
-
-	endc
-
-
-
-ROMEND:
-
-		ifeq	rommode
 
 ; this is data for "non rom mode"..
 STACKPOINTER:
@@ -12884,5 +12938,4 @@ graph:
 	even
 SLASK:
 	dc.l	0
-		endc
 
