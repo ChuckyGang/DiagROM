@@ -1,4 +1,4 @@
-;APS00000034000000340002CC0400000034000000340000003400000034000000340000003400000034
+;APS000000340000003400023D9500024746000247460002474600024746000247460002474600024746
 ;
 ;
 ; DiagROM by John "Chucky" Hertell
@@ -52,8 +52,8 @@ rom_base:	equ $f80000		; Originate as if data is in ROM
 ; Then some different modes for the assembler
 
 
-rommode =	1				; Set to 1 if to assemble as being in ROM
-a1k =		1				; Set to 1 if to assemble as for being used on A1000 (64k memrestriction)
+rommode =	0				; Set to 1 if to assemble as being in ROM
+a1k =		0				; Set to 1 if to assemble as for being used on A1000 (64k memrestriction)
 debug = 	0				; Set to 1 to enable some debugshit in code
 amiga = 	1 				; Set to 1 to create an amiga header to write the ROM to disk
 
@@ -6338,6 +6338,8 @@ IRQCIACIATest:
 
 
 .loopa:
+	move.l	#$f0,$dff180
+
 	move.b	$400(a5),CIACtrl-V+1(a6)
 	move.b	$500(a5),CIACtrl-V+2(a6)
 
@@ -7207,6 +7209,297 @@ PortTestMenu:
 	move.b	#1,PrintMenuFlag-V(a6)
 	bra	MainLoop
 
+PortTestPar:
+	bsr	ClearScreen
+	lea	PortParTest,a0
+	move.l	#7,d1
+	bsr	Print
+
+	lea	PortParTest1,a0
+	move.l	#3,d1
+	bsr	Print
+
+	lea	PortParTest2,a0
+	move.l	#2,d1
+	bsr	Print
+
+.loop:
+	bsr	GetInput
+	cmp.b	#1,RMB-V(a6)
+	beq	.exit
+	move.b	GetCharData-V(a6),d0
+	cmp.b	#$1b,d0	
+	beq	.exit
+
+
+	cmp.b	#0,BUTTON-V(a6)
+	beq	.loop
+
+
+	lea	PortParTest3,a0
+	move.l	#6,d1
+	bsr	Print
+
+	move.b	#$ff,$bfe301
+	bsr	WaitLong
+	move.b	#0,$bfe101
+	bsr	WaitLong
+	move.b	#%11111111,$bfe301	; set pins output
+	bsr	WaitLong
+	move.b	#0,$bfe101		; Set all pins to 0
+	move.b	#0,$bfd200
+	clr.l	Passno-V(a6)
+
+.loopa:
+	clr.l	d0
+	move.l	#10,d1
+	bsr	SetPos
+	lea	PassTxt,a0
+	move.l	#4,d1
+	bsr	Print
+	clr.l	d0
+	add.l	#1,Passno-V(a6)
+	move.l	Passno-V(a6),d0
+	bsr	bindec
+	move.l	#6,d1
+	bsr	Print			; Print out passnumber
+
+
+	bsr	WaitLong
+	move.b	#%00000101,$bfe301
+	bsr	WaitLong
+	move.b	#0,$bfe101		; Set all pins to 0
+	lea	PortParTest12,a0
+	move.l	#3,d1
+	bsr	Print
+	move.b	#0,d0
+	move.b	#1,d1
+	bsr	.TestPin
+
+
+
+	bsr	WaitLong
+	move.b	#%00000010,$bfe301
+	bsr	WaitLong
+	lea	PortParTest21,a0
+	move.l	#3,d1
+	bsr	Print
+	move.b	#1,d0
+	move.b	#0,d1
+	bsr	.TestPin
+
+
+	bsr	WaitLong
+	move.b	#%00000100,$bfe301
+	bsr	WaitLong
+	move.b	#0,$bfe101		; Set all pins to 0
+	lea	PortParTest34,a0
+	move.l	#3,d1
+	bsr	Print
+	move.b	#2,d0
+	move.b	#3,d1
+	bsr	.TestPin
+
+
+	bsr	WaitLong
+	move.b	#%00001000,$bfe301
+	bsr	WaitLong
+	move.b	#0,$bfe101		; Set all pins to 0
+	lea	PortParTest43,a0
+	move.l	#3,d1
+	bsr	Print
+	move.b	#3,d0
+	move.b	#2,d1
+	bsr	.TestPin
+
+
+	bsr	WaitLong
+	move.b	#%00010000,$bfe301
+	bsr	WaitLong
+	move.b	#0,$bfe101		; Set all pins to 0
+	lea	PortParTest56,a0
+	move.l	#3,d1
+	bsr	Print
+	move.b	#4,d0
+	move.b	#5,d1
+	bsr	.TestPin
+
+	bsr	WaitLong
+	move.b	#%00100000,$bfe301
+	bsr	WaitLong
+	move.b	#0,$bfe101		; Set all pins to 0
+	lea	PortParTest65,a0
+	move.l	#3,d1
+	bsr	Print
+	move.b	#5,d0
+	move.b	#4,d1
+	bsr	.TestPin
+
+
+	bsr	WaitLong
+	move.b	#%01000000,$bfe301
+	move.b	#0,$bfd200
+	move.b	#%00000000,$bfe101
+	bsr	WaitLong
+	lea	PortParTest7p,a0
+	move.l	#3,d1
+	bsr	Print
+	move.b	#1,d1
+	move.b	#6,d0
+	bsr	.TestPins
+
+
+
+	bsr	WaitLong
+	move.b	#2,$bfd200
+	move.b	#0,$bfd000
+	move.b	#0,$bfe301
+	bsr	WaitLong
+	lea	PortParTestp7,a0
+	move.l	#3,d1
+	bsr	Print
+	move.b	#6,d1
+	move.b	#1,d0
+	bsr	.TestPins2
+
+
+
+
+	bsr	WaitLong
+	move.b	#%01000000,$bfe301
+	move.b	#0,$bfd200
+	move.b	#%00000000,$bfe101
+	bsr	WaitLong
+	lea	PortParTest7s,a0
+	move.l	#3,d1
+	bsr	Print
+	move.b	#2,d1
+	move.b	#6,d0
+	bsr	.TestPins
+
+
+	bsr	WaitLong
+	move.b	#4,$bfd200
+	move.b	#0,$bfd000
+	move.b	#0,$bfe301
+	bsr	WaitLong
+	lea	PortParTests7,a0
+	move.l	#3,d1
+	bsr	Print
+	move.b	#6,d1
+	move.b	#2,d0
+	bsr	.TestPins2
+
+	bsr	WaitLong
+	move.b	#%10000000,$bfe301
+	bsr	WaitShort
+	move.b	#0,$bfd000
+	move.b	#%00000000,$bfe101
+	bsr	WaitLong
+	lea	PortParTest8b,a0
+	move.l	#3,d1
+	bsr	Print
+	move.b	#0,d1
+	move.b	#7,d0
+	bsr	.TestPins
+
+
+	bsr	WaitLong
+	move.b	#1,$bfd200
+	move.b	#0,$bfd000
+	move.b	#0,$bfe301
+	bsr	WaitLong
+	lea	PortParTestb8,a0
+	move.l	#3,d1
+	bsr	Print
+	move.b	#7,d1
+	move.b	#0,d0
+	bsr	.TestPins2
+
+
+
+	bsr	GetInput
+
+.nolmb:
+	cmp.b	#1,BUTTON-V(a6)
+	beq	.exit
+
+	bne	.loopa
+	
+.exit:
+
+	bra	PortTestMenu
+
+
+.TestPin:					;	Test pin of par port
+						; IN:
+						;	d0 = bit to write
+						;	d1 = bit to read
+						; OUT:
+						;	d2 = 0 = OK, 1=Fail
+
+	clr.l	d2				; Clear errorregister
+	bsr	WaitLong
+	btst	d1,$bfe101			; First test that bit is 0, if not something is wrong
+						; (like missing dongle! but something else can also be a problem)
+	beq	.null
+	bra	.fail
+.null:						; bit was 0, lets set bit and test that it got high
+	bset	d0,$bfe101
+	bsr	WaitLong
+	btst	d1,$bfe101
+	beq	.was0
+	lea	OOK,a0
+	move.b	#2,d1
+	bsr	Print
+	rts
+						; bit was 1, we are OK
+.was0:						; ok bit was 0, something is wrong, exit with fail
+	bra	.fail
+	rts
+
+.fail:
+	lea	BAD,a0
+	move.b	#1,d1
+	bsr	Print
+	rts
+
+
+.TestPins:					; Same as testpin but checks CIAB instead
+
+	clr.l	d2				; Clear errorregister
+	bsr	WaitLong
+	btst	d1,$bfd000			; First test that bit is 0, if not something is wrong
+						; (like missing dongle! but something else can also be a problem)
+	beq	.nulls
+	bra	.fail
+.nulls:						; bit was 0, lets set bit and test that it got high
+	bset	d0,$bfe101
+	bsr	WaitLong
+	btst	d1,$bfd000
+	beq	.was0
+	lea	OOK,a0
+	move.b	#2,d1
+	bsr	Print
+	rts
+
+.TestPins2:					; Same as testpins but sets CIAB instead
+
+	clr.l	d2				; Clear errorregister
+	bsr	WaitLong
+	btst	d1,$bfe101			; First test that bit is 0, if not something is wrong
+						; (like missing dongle! but something else can also be a problem)
+	beq	.nulls2
+	bra	.fail
+.nulls2						; bit was 0, lets set bit and test that it got high
+	bset	d0,$bfd000
+	bsr	WaitLong
+	btst	d1,$bfe101
+	beq	.was0
+	lea	OOK,a0
+	move.b	#2,d1
+	bsr	Print
+	rts
 
 
 PortTestJoystick:
@@ -7216,7 +7509,7 @@ PortTestJoystick:
 	move.w	#$ffff,JOY1DAT-V(a6)
 	move.w	#$ffff,POT0DAT-V(a6)
 	move.w	#$ffff,POT1DAT-V(a6)
-	move.w	#$ffff,POTINP-V(a6)
+	move.w	#$ffff,POTINP-V(a6)	
 	move.b	#$ff,CIAAPRA-V(a6)
 	clr.l	PortJoy0-V(a6)
 	clr.l	PortJoy1-V(a6)
@@ -7707,12 +8000,15 @@ KeyBoardTest:
 	move.l	#3,d1
 	bsr	Print
 
-	move.l	#62,d0
-	move.l	#2,d1
+	move.l	#32,d0
+	move.l	#3,d1
 	bsr	SetPos
-	lea	Space3,a0
-	bsr	Print
 
+	move.b	scancode-V(a6),d0
+	move.l	#3,d1
+	bsr	binhexbyte
+	bsr	Print
+	
 	move.l	#62,d0
 	move.l	#2,d1
 	bsr	SetPos
@@ -7723,12 +8019,21 @@ KeyBoardTest:
 	move.l	#3,d1
 	bsr	Print
 
-	move.l	#69,d0
+	move.l	#58,d0
 	move.l	#3,d1
 	bsr	SetPos
 
 	move.b	key-V(a6),d0
 	bsr	binstringbyte
+	move.l	#3,d1
+	bsr	Print
+
+	move.l	#73,d0
+	move.l	#3,d1
+	bsr	SetPos
+
+	move.b	key-V(a6),d0
+	bsr	binhexbyte
 	move.l	#3,d1
 	bsr	Print
 
@@ -7940,8 +8245,11 @@ bitcheck:
 
 ErrorScreen:
 	bsr	ClearScreen
+	move.l	d1,DebugD1-V(a6)
 	move.l	#1,d1
 	bsr	Print
+	move.l	DebugA0-V(a6),a0
+	move.l	DebugD1-V(a6),d1
 	bsr	DebugScreen
 
 	bsr	WaitButton
@@ -8900,7 +9208,9 @@ DiskTest:
 	
 DiskdriveTest:
 	bsr	ClearScreen
-
+	lea	UnderDevTxt,a0
+	move.l	#4,d1
+	bsr	Print
 
 .loop:
 
@@ -11475,8 +11785,12 @@ II:
 	dc.b	" II",0
 III:
 	dc.b	"III",0
+OOK:
+	dc.b	" "	; Combined with next will generate a space before OK. nothing between here
 OK:
 	dc.b	"OK",0
+BAD:
+	dc.b	"BAD",0
 MinusTxt:
 	dc.b	" - ",0	
 SPACEOK:
@@ -11506,6 +11820,9 @@ MenuKeys:
 
 MainMenuText:
 	dc.b	"                             DiagROM "
+		ifne	a1k
+		dc.b	"A1000 "
+		endc
 	VERSION
 	dc.b	" - "
 	incbin	"ram:BootDate.txt"
@@ -11854,7 +12171,7 @@ PortTestMenu4:
 PortTestMenuItems:
 	dc.l	PortTestText,PortTestMenu1,PortTestMenu2,PortTestMenu3,PortTestMenu4,0
 PortTestMenuCode:
-	dc.l	NotImplemented,NotImplemented,PortTestJoystick,MainMenu
+	dc.l	PortTestPar,NotImplemented,PortTestJoystick,MainMenu
 PortTestMenuKey:
 	dc.b	"1","2","3","9",0
 
@@ -11872,6 +12189,42 @@ DiskTestMenuCode:
 	dc.l	DiskdriveTest,MainMenu
 DiskTestMenuKey:
 	dc.b	"1","9",0
+
+PortParTest:
+	dc.b	2,"Parallelport tests",$a,$a,0
+PortParTest1:
+	dc.b	"To start paralleltest, make sure loopback is connected and press",$a
+	dc.b	"any key to start, Press ESC or Right mouse to exit!",$a,$a,0
+PortParTest2:
+	dc.b	"Build a loopback adapter: Connect 1-10,2-3,4-5,6-7,9-11,8-12-13",$a
+	dc.b	"14[+5V] -> LED+270ohm -> 18[GND] (LED will be bright if +5V is OK!)",$a,0
+	
+PortParTest3:
+	dc.b	$a,"Test is running, any button to exit!",0
+PortParTest12:
+	dc.b	$a,"Testing Bit 1->2: ",0
+PortParTest21:
+	dc.b	$a,"Testing Bit 2->1: ",0
+PortParTest34:
+	dc.b	$a,"Testing Bit 3->4: ",0
+PortParTest43:
+	dc.b	$a,"Testing Bit 4->3: ",0
+PortParTest56:
+	dc.b	$a,"Testing Bit 5->6: ",0
+PortParTest65:
+	dc.b	$a,"Testing Bit 6->5: ",0
+PortParTest7p:
+	dc.b	$a,"Testing Bit 7->Paper out: ",0
+PortParTest7s:
+	dc.b	$a,"Testing Bit 7->Select: ",0
+PortParTestp7:
+	dc.b	$a,"Testing Paper out->Bit 7: ",0
+PortParTests7:
+	dc.b	$a,"Testing Select->Bit 7: ",0
+PortParTest8b:
+	dc.b	$a,"Testing Bit 8->Busy: ",0
+PortParTestb8:
+	dc.b	$a,"Testing Busy->Bit 8: ",0
 
 PortJoyTest:
 	dc.b	2,"Joystickport tests",$a,$a,0
@@ -11903,7 +12256,7 @@ KeyBoardTestText:
 KeyBoardTestCodeTxt:
 	dc.b	"Current Scancode read from Keyboardbuffer:      Keyboardcode:      Char: ",$a,0
 KeyBoardTestCodeTxt2:
-	dc.b	"Scancode binary:                                Keyboardcode binary:         ",0
+	dc.b	"Scancode binary:           HEX:      Keyboardcode binary:           HEX: ",0
 RTCByteTxt:
 	dc.b	"Raw RTC data in hex:",$a,0
 
@@ -12128,7 +12481,8 @@ HaltTxt:
 	dc.b	$a,$d,"PANIC! System halted, not enough resources found to generate better dump",$a,$d,0
 	
 	EVEN
-
+HexTxt:
+	dc.b	"HEX: ",0
 AddrTxt:
 	dc.b	$d,"Addr $",0
 	EVEN
@@ -12142,6 +12496,10 @@ RTxt:
 	dc.b	"  Read: $",0
 Txt32KBlock:
 	dc.b	"  Number of 32K blocks found: $",0
+PassTxt:
+	dc.b	" Pass: ",0
+PinTxt:
+	dc.b	$a,"Pin no: ",0
 Base1Txt:
 	dc.b	$a,$d,"  Using $",0
 Base2Txt:
@@ -12827,7 +13185,8 @@ HHPOSR:
 	dc.w	0
 CIAAPRA:
 	dc.w	0
-
+Passno:
+	dc.l	0
 GfxTestBpl:				; Pointers to bitplanes for gfxtest
 	dc.l	0,0,0,0,0,0,0,0
 SHIT:
