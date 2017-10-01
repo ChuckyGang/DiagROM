@@ -1,6 +1,4 @@
-;APS000000340000003400023D9500024746000247460002474600024746000247460002474600024746
-;
-;
+;APS00000030000000300002439400024D4500024D4500024D4500024D4500024D4500024D4500024D45
 ; DiagROM by John "Chucky" Hertell
 ;
 
@@ -238,13 +236,13 @@ Begin:
 	bne	.NOP2LMB
 	bset	#1,d0
 .NOP2LMB:
-;	btst	#10,$dff016		; Check RMB port 1
-;	bne	.NOP1RMB
-;	bset	#2,d0
+	btst	#10,$dff016		; Check RMB port 1
+	bne	.NOP1RMB
+	bset	#2,d0
 .NOP1RMB:
-;	btst	#14,$dff016		; Check RMB port 2
-;	bne	.NOP2RMB
-;	bset	#3,d0
+	btst	#14,$dff016		; Check RMB port 2
+	bne	.NOP2RMB
+	bset	#3,d0
 .NOP2RMB:
 
 	move.l	d0,a4			; OK Store the result in a4 (YEAH I know it is not used for data.. but  no mem.. and only register not used)
@@ -260,6 +258,54 @@ Begin:
 	bra	DumpSerial		; Dump to serial, after it jump to where a1 points at.
 .jmp1:
 
+
+	lea	LoopSerTest,a0
+	lea	.loopdone,a1
+	bra	DumpSerial
+.loopdone:
+	move.w	#$4000,$dff09a
+	move.w	#373,$dff032			; Set the speed of the serialport (9600BPS)
+	move.b	#$4f,$bfd100			; Set DTR high
+	move.w	#$0801,$dff09a
+	move.w	#$0801,$dff09c
+
+
+	clr.l	d6			; Clear D6, if this is anything else than 0 efter loopbacktest, we had an echo (adapter)
+	
+	move.l	#"<",d2
+	lea	.looptst1,a0
+	bra	Loopbacktest
+.looptst1:
+	move.l	#">",d2
+	lea	.looptst2,a0
+	bra	Loopbacktest
+.looptst2:
+
+	cmp.b	#0,d6
+	beq	.noadapter
+
+
+	lea	DDETECTED,a0
+	lea	.loopdetect,a1
+	bra	DumpSerial
+.loopdetect:
+
+					; ok we had detected a loopback, lets mark it in our "secret" register (in A4 now) by setting bit 4
+	move.l	a4,d0
+	bset	#4,d0
+	move.l	d0,a4			; ok we have restored it in A4 now.
+
+	bra	.goon
+
+.noadapter:
+	lea	NoLoopback,a0
+	lea	.nodetect,a1
+	bra	DumpSerial
+.nodetect:
+
+
+.goon:
+	move.l	a4,$4
 
 
 	PAROUT #$ff			; Send #$ff to Paralellport.
@@ -1005,6 +1051,8 @@ code:
 
 					; Before we actually do start, lets clear all used memory
 
+
+
 	move.l	a6,a0
 	move.l	a6,d2
 	add.l	#EndData-V,d2
@@ -1015,18 +1063,28 @@ code:
 
 	move.l	a4,d7
 
+
+	bset	#4,d7			; Set LOOPBACK	KUK
+
 	btst	#0,d7			; is d7 set? then we should not draw anything onscreen
 	beq	.notset
 	move.b	#1,NoDraw-V(a6)
 
 .notset:
-
 	move.b	#0,NoSerial-V(a6)
 	btst	#1,d7			; Check if noserial is to be set
 	beq	.notset2
 
 	move.b	#1,NoSerial-V(a6)	; set it
 .notset2:
+	move.b	#0,LoopB-V(a6)
+
+	btst	#4,d7			; Check if loopbackadapter was attached
+	beq	.notset3
+	
+	move.b	#1,LoopB-V(a6)
+.notset3:
+
 	move.l	d1,TotalFast-V(a6)	; Store total fastmem detected
 	move.l	d1,BootMBFastmem-V(a6)
 	asl.l	#5,d0			; Multiply d0 with 32 as it contains number of blocks of 32K
@@ -1054,12 +1112,18 @@ code:
 
 	cmp.b	#1,NoSerial-V(a6)	; Check if noserial is set
 	beq	.noser
-	move.w	#2,SerialSpeed-V(a6)
+	cmp.b	#1,LoopB-V(a6)		; Check if loopbackadapter was attacjhed
+	beq	.noserloop		; in that case, no serial output
+	move.w	#2,SerialSpeed-V(a6)	; KUKEN
 	bsr	Init_Serial
 
 
 	lea	DetectRasterTxt,a0
 	bsr	SendSerial
+	bra	.ser
+.noserloop:
+	move.w	#5,SerialSpeed-V(a6)	; Set serialspeed to 5 ,(same as 0 but mark loopbackadapter)
+	move.b	#1,NoSerial-V(a6)
 	bra	.ser
 .noser:
 	move.w	#0,SerialSpeed-V(a6)	; Set Serialspeed to 0
@@ -1227,6 +1291,9 @@ code:
 
 	cmp.b	#1,NoSerial-V(a6)
 	beq	.serialon			; IF Noserial was set, skip this part
+
+	cmp.b	#1,LoopB-V(a6)			; Same if loopbackadapter was attached
+	beq	.serialon
 
 
 	move.l	#1200,d7			; read data for a while.. Giving user a possability of try to press a key on serialport
@@ -1531,7 +1598,7 @@ GetInput:
 
 .getkey:
 	move.l	d0,d1
-	bsr	GetCharKey
+	bsr	GetCharKey			; KUKEN
 	cmp	#0,d0
 	beq	.nokey
 
@@ -1555,6 +1622,8 @@ GetInput:
 
 GetSerial:					; Reads serialport and returns first char in buffer.
 	cmp.w	#0,SerialSpeed-V(a6)		; if serialport is disabled.  skip all serial stuff
+	beq	.exit
+	cmp.w	#5,SerialSpeed-V(a6)
 	beq	.exit
 	move.b	#0,SerData-V(a6)
 	bsr	ReadSerial
@@ -1580,6 +1649,8 @@ GetSerial:					; Reads serialport and returns first char in buffer.
 
 ReadSerial:					; Read serialport, and if anything there store it in the buffer
 	cmp.w	#0,SerialSpeed-V(a6)		; is serialport is disabled.  skip all serial stuff
+	beq	.exit
+	cmp.w	#5,SerialSpeed-V(a6)
 	beq	.exit
 
 	move.w	$dff018,d5
@@ -2222,6 +2293,8 @@ CopyMem:
 
 
 Init_Serial:
+	cmp.b	#1,NoSerial-V(a6)
+	beq	.noser
 	move.w	#$4000,$dff09a
 	clr.l	d0
 	move.w	SerialSpeed-V(a6),d0		; Get serialspeed
@@ -2232,6 +2305,7 @@ Init_Serial:
 	move.b	#$4f,$bfd00			; Set DTR high
 	move.w	#$0801,$dff09a
 	move.w	#$0801,$dff09c
+.noser:
 	rts
 	
 
@@ -2240,6 +2314,8 @@ Clean_Serial:
 
 rs232_out:	
 	cmp.w	#0,SerialSpeed-V(a6)
+	beq	.noserial
+	cmp.w	#5,SerialSpeed-V(a6)
 	beq	.noserial
 	cmp.b	#1,NoSerial-V(a6)
 	beq	.noserial
@@ -7502,6 +7578,244 @@ PortTestPar:
 	rts
 
 
+PortTestSer:
+	bsr	ClearScreen
+	lea	PortSerTest,a0
+	move.l	#7,d1
+	bsr	Print
+
+	lea	PortSerTest1,a0
+	move.l	#3,d1
+	bsr	Print
+
+	lea	PortSerTest2,a0
+	move.l	#2,d1
+	bsr	Print
+
+.loop:
+	bsr	GetInput
+	cmp.b	#1,RMB-V(a6)
+	beq	.exit
+	move.b	GetCharData-V(a6),d0
+	cmp.b	#$1b,d0	
+	beq	.exit
+
+
+	cmp.b	#0,BUTTON-V(a6)
+	beq	.loop
+
+	clr.l	Passno-V(a6)
+	move.w	#0,SerTstBps-V(a6)
+
+.loopa:
+;	bsr	ClearScreen
+	lea	PortParTest3,a0			; Lets steal that string
+	move.l	#6,d1
+	bsr	Print
+
+
+.testloop:
+	clr.l	d0
+	move.l	#16,d1
+	bsr	SetPos
+	lea	PassTxt,a0
+	move.l	#4,d1
+	bsr	Print
+	clr.l	d0
+	add.l	#1,Passno-V(a6)
+	move.l	Passno-V(a6),d0
+	bsr	bindec
+	move.l	#6,d1
+	bsr	Print			; Print out passnumber
+
+	lea	PortSerBps,a0
+	move.l	#4,d1
+	bsr	Print
+
+	move.b	#$ff,$bfd200
+	move.b	#0,$bfd000
+
+	add.w	#1,SerTstBps-V(a6)
+	cmp.w	#5,SerTstBps-V(a6)
+	bne	.notmax
+	move.w	#1,SerTstBps-V(a6)
+
+.notmax:
+	move.w	SerTstBps-V(a6),d0		; Get SerialSpeed value
+	mulu	#4,d0				; Multiply with 4
+	lea	SerText,a0			; Load table of pointers to different texts
+	move.l	(a0,d0.l),a0			; load a0 with the value that a0+d0 points to (text of speed)
+	move.l	#7,d1
+	bsr	Print
+
+	lea	SerSpeeds,a0
+	move.l	(a0,d0),d0			; Load d0 with the value to write to the register for the correct speed.
+	move.w	d0,$dff032			; Set the speed of the serialport
+
+
+	lea	PortSerTest3,a0
+	move.l	#3,d1
+	bsr	Print
+
+	move.l	#67,d0
+	move.l	#18,d1
+	bsr	SetPos
+
+
+	clr.l	d6
+	lea	PortSerString,a0
+.serloop:
+	move.b	(a0)+,d2
+	cmp.b	#0,d2
+	beq	.donetest
+
+	bsr	.Loopbacktest
+	bra	.serloop
+
+.donetest:
+
+	move.l	d6,d0
+	move.l	#2,d1
+	bsr	bindec
+	bsr	Print
+
+	lea	PortSerTestB45,a0		; Test RTS->CTS
+	move.l	#3,d1
+	bsr	Print
+	move.b	#$c0,$bfd200
+	move.b	#6,d0
+	move.b	#4,d1
+	bsr	.TestPin
+
+	lea	PortSerTestB46,a0		; Test RTS -> DSR
+	move.l	#3,d1
+	bsr	Print
+	move.b	#$c0,$bfd200
+	move.b	#0,$bfd000
+	bsr	WaitLong
+	move.b	#6,d0
+	move.b	#3,d1
+	bsr	.TestPin
+
+
+	lea	PortSerTestB208,a0		; Test DTR -> CD
+	move.l	#3,d1
+	bsr	Print
+	move.b	#$c0,$bfd200
+	move.b	#0,$bfd000
+	bsr	WaitLong
+	move.b	#%10000000,$bfd200		; Set what pin is output
+	move.b	#7,d0
+	move.b	#5,d1
+	bsr	.TestPin
+
+	bsr	GetInput
+	cmp.b	#1,BUTTON-V(a6)
+	bne	.testloop
+
+
+
+;	bsr	WaitReleased
+
+.exit:
+.loopend:
+	bsr	GetInput
+	cmp.b	#1,BUTTON-V(a6)
+	bne.s	.loopend
+	bsr	Init_Serial
+	bra	PortTestMenu
+
+
+.TestPin:
+						; Sets a bit and checks is a bit is set at CIAB Register
+						; IN
+						;	D0 = Bit to set
+						;	D1 = Bit to test
+
+	clr.l	d3
+	bset	d0,d3
+	clr.l	d2
+	move.b	d3,$bfd000
+	bsr	WaitLong
+
+	btst	d1,$bfd000
+	bne	.bitset
+	bra	.bitclrtst
+.bitset:
+	add.b	#1,d2
+.bitclrtst:
+	bclr	d0,d3
+	move.b	d3,$bfd000
+	bsr	WaitLong
+
+	btst	d1,$bfd000
+	beq	.bitclear
+	bra	.showresult
+.bitclear:
+	add.b	#1,d2
+.showresult:
+
+	cmp.b	#2,d2
+	bne	.testfail
+	lea	OOK,a0
+	move.b	#2,d1
+	bsr	Print
+	rts
+.testfail:
+	lea	BAD,a0
+	move.b	#1,d1
+	bsr	Print
+	rts
+
+
+.Loopbacktest:					; Test if we have a loopbackadapter connected.
+						; Simply by outputing the char in D2 and check if the same char comes back.
+						; if so, 1 is added to D6
+	move.w	#$4000,$dff09a
+	move.w	#373,$dff032			; Set the speed of the serialport (9600BPS)
+	move.b	#$4f,$bfd100			; Set DTR high
+	move.w	#$0801,$dff09a
+	move.w	#$0801,$dff09c
+
+	move.l	#10000,d7			; Load d7 with a timeoutvariable
+.timeoutloop:	
+	move.b	$bfe001,d1			; just read crapdata, we do not care but reading from CIA is slow... for timeout stuff only
+	sub.l	#1,d7				; count down timeout value
+	cmp.l	#0,d7				; if 0, timeout.
+	beq	.endloop
+	move.w	$dff018,d0
+	btst	#13,d0				; Check TBE bit
+	beq.s	.timeoutloop			; Loop until all is ok to send or until timeout hits
+.endloop:
+
+	move.w	#$0100,d1
+	move.b	d2,d1
+	move.w	d1,$dff030			; send it to serial
+	move.w	#$0001,$dff09c			; turn off the TBE bit
+
+
+	move.l	#100000,d7
+
+.timeoutloop2
+	cmp.l	#0,d7
+	beq	.exitloop
+	sub.l	#1,d7
+	move.w	$dff018,d0
+	btst	#14,d0				; Buffer full, we have a new char
+	beq	.timeoutloop2
+	bra	.check
+.exitloop:
+	clr.l	d0
+.check:
+	cmp.b	d0,d2				; Check if in and out was the same char
+
+	bne.w	.exittest				; no so lets exit
+	add.b	#1,d6				; Yes, add 1 to d6
+.exittest:
+	rts
+
+
+
 PortTestJoystick:
 	bsr	ClearScreen
 
@@ -9608,6 +9922,8 @@ ForceSer:					; For debug. print stuff on serialport. if port disabled force 960
 
 	cmp.w	#0,SerialSpeed-V(a6)
 	beq	.noserial
+	cmp.w	#5,SerialSpeed-V(a6)
+	beq	.noserial
 .serial:
 
 	PUSH
@@ -9709,7 +10025,8 @@ DumpSerial:				; This is only for PRE-Memory usage. Dumps a string to serialport
 	move.l	a4,d7				; Copy the value in A4 (temporary data of mousebutttons pressed) to d7
 	btst	#1,d7				; check if LMB on Joyport 1 was pressed. if so. skip serial output.
 	bne	.nomore				; it was pressed. skip all this
-	
+	btst	#4,d7				; Check if we had loopback installed
+	bne	.nomore
 	move.w	#$4000,$dff09a
 	move.w	#373,$dff032			; Set the speed of the serialport (9600BPS)
 	move.b	#$4f,$bfd100			; Set DTR high
@@ -9753,6 +10070,8 @@ DumpSerialChar:				; This is only for PRE-Memory usage. Dumps a string to serial
 	move.l	a4,d7				; Copy the value in A4 (temporary data of mousebutttons pressed) to d7
 	btst	#1,d7				; check if LMB on Joyport 1 was pressed. if so. skip serial output.
 	bne	.nomore				; it was pressed. skip all this
+	btst	#4,d7				; Check if we had loopback installed
+	bne	.nomore
 
 	move.w	#$4000,$dff09a
 	move.w	#373,$dff032			; Set the speed of the serialport (9600BPS)
@@ -9781,6 +10100,51 @@ DumpSerialChar:				; This is only for PRE-Memory usage. Dumps a string to serial
 .nomore:
 	jmp	(a1)				; AS we cannot use RTS (and bsr/jsr) jump here after we are done.
 
+
+Loopbacktest:					; Test if we have a loopbackadapter connected.
+						; Simply by outputing the char in D2 and check if the same char comes back.
+						; if so, 1 is added to D6
+	move.w	#$4000,$dff09a
+	move.w	#373,$dff032			; Set the speed of the serialport (9600BPS)
+	move.b	#$4f,$bfd100			; Set DTR high
+	move.w	#$0801,$dff09a
+	move.w	#$0801,$dff09c
+
+	move.l	#10000,d7			; Load d7 with a timeoutvariable
+.timeoutloop:	
+	move.b	$bfe001,d1			; just read crapdata, we do not care but reading from CIA is slow... for timeout stuff only
+	sub.l	#1,d7				; count down timeout value
+	cmp.l	#0,d7				; if 0, timeout.
+	beq	.endloop
+	move.w	$dff018,d0
+	btst	#13,d0				; Check TBE bit
+	beq.s	.timeoutloop			; Loop until all is ok to send or until timeout hits
+.endloop:
+
+	move.w	#$0100,d1
+	move.b	d2,d1
+	move.w	d1,$dff030			; send it to serial
+	move.w	#$0001,$dff09c			; turn off the TBE bit
+
+
+	move.l	#100000,d7
+
+.timeoutloop2
+	cmp.l	#0,d7
+	beq	.exitloop
+	sub.l	#1,d7
+	move.w	$dff018,d0
+	btst	#14,d0				; Buffer full, we have a new char
+	beq	.timeoutloop2
+	bra	.check
+.exitloop:
+	clr.l	d0
+.check:
+	cmp.b	d0,d2				; Check if in and out was the same char
+	bne.s	.exit				; no so lets exit
+	add.b	#1,d6				; Yes, set d6 to 1
+.exit:
+	jmp	(a0)
 
 
 InputHexNum:					; Inputs a 32 bit hexnumber
@@ -11678,6 +12042,9 @@ InitTxt:
 	dc.b	" - "
 		incbin	"ram:BootDate.txt"
 	dc.b	" - By John (Chucky/The Gang) Hertell",$a,$d,$a,$d,0
+LoopSerTest:
+	dc.b	$a,$d,"Testing if serial loopbackadapter is installed: ",0
+
 WaitReleasedTxt:
 	dc.b	"Waiting for all buttons to be released",$a
 	dc.b	"Release all buttons NOW or they will be disabled",$a,0
@@ -11717,7 +12084,7 @@ InitP2RMBtxt:
 
 InitSerial2:
 	dc.b	$a,$d,$a,$d,"To use serial communication please hold down ANY key now",$a,$d
-	dc.b	"OR hold down the RIGHT mousebutton on the Amiga during poweron",$a,$d
+	dc.b	"OR click the RIGHT mousebutton.",$a,$d
 	dc.b	"Holding down the LEFT mousebutton will force serial on and turn off screen",$a,$d
 	dc.b	"forcing stuff to run in fastmem if avaible",$a,$d,$a,$d,0
 EndSerial:
@@ -11739,7 +12106,7 @@ Space3:
 CPU:	dc.b	"680x0",0,"68010",0,"68020",0,"68030",0,"68040",0,"68060",0,"68???",0
 
 Bps:
-	dc.l	BpsNone,Bps2400,Bps9600,Bps38400,Bps115200,0
+	dc.l	BpsNone,Bps2400,Bps9600,Bps38400,Bps115200,BpsLoop
 	
 BpsNone:
 	dc.b	"N/A   ",0
@@ -11751,6 +12118,8 @@ Bps38400:
 	dc.b	"38400 ",0
 Bps115200:
 	dc.b	"115200",0
+BpsLoop:
+	dc.b	"LOOP  ",0
 ON:
 	dc.b	"ON ",0
 OFF:
@@ -11777,8 +12146,12 @@ FIRE:
 	dc.b	"FIRE",0
 FAILED:
 	dc.b	"FAILED",0
+DDETECTED:
+	dc.b	" DETECTED",$a,$d,0
 DETECTED:
 	dc.b	"DETECTED",0
+NoLoopback:
+	dc.b	" NOT DETECTED",$a,$d,0
 CANCELED:
 	dc.b	"CANCELED",0
 II:
@@ -11807,9 +12180,9 @@ Bytes:
 	dc.b	" Bytes",0
 	EVEN
 SerSpeeds:		; list of Baudrates (3579545/BPS)+1
-	dc.l	0,1492,373,94,32,0
+	dc.l	0,1492,373,94,32,0,0
 SerText:
-	dc.l	BpsNone,Bps2400,Bps9600,Bps38400,Bps115200,BpsNone
+	dc.l	BpsNone,Bps2400,Bps9600,Bps38400,Bps115200,BpsLoop,BpsNone
 	
 Menus:					; Pointers to the menus
 	dc.l	MainMenuItems,0,AudioMenuItems,MemtestMenuItems,IRQCIAtestMenuItems,GFXtestMenuItems,PortTestMenuItems,OtherTestItems,DiskTestMenuItems,0,0
@@ -12171,7 +12544,7 @@ PortTestMenu4:
 PortTestMenuItems:
 	dc.l	PortTestText,PortTestMenu1,PortTestMenu2,PortTestMenu3,PortTestMenu4,0
 PortTestMenuCode:
-	dc.l	PortTestPar,NotImplemented,PortTestJoystick,MainMenu
+	dc.l	PortTestPar,PortTestSer,PortTestJoystick,MainMenu
 PortTestMenuKey:
 	dc.b	"1","2","3","9",0
 
@@ -12197,7 +12570,7 @@ PortParTest1:
 	dc.b	"any key to start, Press ESC or Right mouse to exit!",$a,$a,0
 PortParTest2:
 	dc.b	"Build a loopback adapter: Connect 1-10,2-3,4-5,6-7,9-11,8-12-13",$a
-	dc.b	"14[+5V] -> LED+270ohm -> 18[GND] (LED will be bright if +5V is OK!)",$a,0
+	dc.b	"14[+5V] -> LED+270ohm -> 18[GND] (LED will be bright if +5V gives power!)",$a,0
 	
 PortParTest3:
 	dc.b	$a,"Test is running, any button to exit!",0
@@ -12225,6 +12598,36 @@ PortParTest8b:
 	dc.b	$a,"Testing Bit 8->Busy: ",0
 PortParTestb8:
 	dc.b	$a,"Testing Busy->Bit 8: ",0
+
+
+PortSerTest:
+	dc.b	2,"Serialport tests",$a,$a,0
+PortSerTest1:
+	dc.b	"To start serialtest, make sure loopback is connected and press",$a
+	dc.b	"any key to start, This means if you are using serialconsole",$a
+	dc.b	"you need to change that cable to a loopback adapter and not use",$a
+	dc.b	"Serialport for controlling DiagROM!",$a,$a
+	dc.b	"Press ESC or Right mouse to exit!",$a,$a,0
+PortSerTest2:
+	dc.b	"Build a loopback adapter: Connect 2-3, 4-5-6, 8-20-22",$a
+	dc.b	"9[+12V] -> LED+1Kohm -> 7[GND]",$a
+	dc.b	"7[GND] -> LED+1Kohm -> 10[-12V]",$a
+	dc.b	"LED will be bright if +12 and -12V gives power",$a,0
+
+PortSerBps:
+	dc.b	"   BPS: ",0
+PortSerTest3:
+	dc.b	$a,$a,"Testing sending a 60 bytes test, number of correct received chars:        ",0
+PortSerTestB45:
+	dc.b	$a,"Testing pin 4 (RTS) to pin 5 (CTS):",0
+PortSerTestB46:
+	dc.b	$a,"Testing pin 4 (RTS) to pin 6 (DSR):",0
+PortSerTestB208:
+	dc.b	$a,"Testing pin 20 (DTR) to pin 8 (CD):",0
+
+PortSerString:
+	;	 123	456789012345678901234567890123456789012345678901234567890"
+	dc.b	"This is a serialporttest for loopbackadapter! NOT Console!",$a,$d,0
 
 PortJoyTest:
 	dc.b	2,"Joystickport tests",$a,$a,0
@@ -12762,6 +13165,8 @@ keymap:
 	dc.l	0			; Points to keymap to be used.
 NoSerial:
 	dc.b	0			; if other then 0, no serial output at start.
+LoopB:
+	dc.b	0			; if other than 0, Loopbackadapter was attached at boot
 GetCharData:
 	dc.b	0			; Result of GetChar
 keypressed:
@@ -12921,6 +13326,8 @@ PortJoy0OLD:
 	dc.l	0
 PortJoy1OLD:
 	dc.l	0
+SerTstBps:
+	dc.w	0	; BPS of serialtest
 OldMarkItem:
 	dc.b	0	; Contains the item marked before
 MarkItem:
