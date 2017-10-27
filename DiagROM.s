@@ -1,4 +1,5 @@
-;APS00000030000000300002439400024D4500024D4500024D4500024D4500024D4500024D4500024D45
+;APS0000003200000032000253A600025D5700025D5700025D5700025D5700025D5700025D5700025D57
+;
 ; DiagROM by John "Chucky" Hertell
 ;
 
@@ -10,10 +11,10 @@
 
 	
 VER:	MACRO
-	dc.b "0"			; Versionnumber
+	dc.b "1"			; Versionnumber
 	ENDM
 REV:	MACRO
-	dc.b "9"			; Revisionmumber
+	dc.b "0"			; Revisionmumber
 	ENDM
 
 VERSION:	MACRO
@@ -50,7 +51,7 @@ rom_base:	equ $f80000		; Originate as if data is in ROM
 ; Then some different modes for the assembler
 
 
-rommode =	0				; Set to 1 if to assemble as being in ROM
+rommode =	1				; Set to 1 if to assemble as being in ROM
 a1k =		0				; Set to 1 if to assemble as for being used on A1000 (64k memrestriction)
 debug = 	0				; Set to 1 to enable some debugshit in code
 amiga = 	1 				; Set to 1 to create an amiga header to write the ROM to disk
@@ -107,7 +108,6 @@ SaveFile:
 	move.l	#a,d2
 	move.l	#b-a,d3
 	jsr	-48(a6)
-
 
 	move.l	.Peekare,d1
 	jsr	-36(a6)
@@ -258,6 +258,13 @@ Begin:
 	bra	DumpSerial		; Dump to serial, after it jump to where a1 points at.
 .jmp1:
 
+	move.w	#$aaa,$dff180		; Set screen to light grey
+
+	lea	.cleardone,a0
+	bra	DumpClearSerial
+.cleardone:
+
+
 
 	lea	LoopSerTest,a0
 	lea	.loopdone,a1
@@ -265,10 +272,11 @@ Begin:
 .loopdone:
 	move.w	#$4000,$dff09a
 	move.w	#373,$dff032			; Set the speed of the serialport (9600BPS)
-	move.b	#$4f,$bfd100			; Set DTR high
+	move.b	#$4f,$bfd000			; Set DTR high
 	move.w	#$0801,$dff09a
 	move.w	#$0801,$dff09c
 
+	TOGGLEPWRLED
 
 	clr.l	d6			; Clear D6, if this is anything else than 0 efter loopbacktest, we had an echo (adapter)
 	
@@ -276,11 +284,14 @@ Begin:
 	lea	.looptst1,a0
 	bra	Loopbacktest
 .looptst1:
+	move.w	#$777,$dff180		; Set screen to light grey
+	TOGGLEPWRLED
 	move.l	#">",d2
 	lea	.looptst2,a0
 	bra	Loopbacktest
 .looptst2:
-
+	move.w	#$555,$dff180		; Set screen to light grey
+	TOGGLEPWRLED
 	cmp.b	#0,d6
 	beq	.noadapter
 
@@ -1064,7 +1075,7 @@ code:
 	move.l	a4,d7
 
 
-	bset	#4,d7			; Set LOOPBACK	KUK
+;	bset	#4,d7			; Set LOOPBACK	KUK
 
 	btst	#0,d7			; is d7 set? then we should not draw anything onscreen
 	beq	.notset
@@ -1079,7 +1090,7 @@ code:
 .notset2:
 	move.b	#0,LoopB-V(a6)
 
-	btst	#4,d7			; Check if loopbackadapter was attached
+	btst	#4,d7			; Check if loopbackadapter was attached at boot (buggy code, so will test again)
 	beq	.notset3
 	
 	move.b	#1,LoopB-V(a6)
@@ -1109,6 +1120,44 @@ code:
 
 	move.l	d0,ChipEnd-V(a6)	; Write lastchipmemaddress into EndChip
 
+
+
+;---------------------------------- This is more or less where it all starts and a system is up and running
+
+;	ifeq	rommode			; if we are in rommode, then do a loopbacktest here aswell... removed due to initbug.
+
+	lea	LoopSerTest,a0
+	lea	.dirtyjump,a1		; TECHNICALLY we do not need to do this dirty thing anymore, but just to
+	bra	DumpSerial		; reuse the code
+.dirtyjump
+	bsr	ClearSerial
+	bsr	ClearSerial
+	clr.l	d6			; Clear d6 as it a counter for how many similiar chars we got back as echo
+	move.b	#"<",d2			; Char to test
+	bsr	RealLoopbacktest
+
+	move.b	#">",d2			; Char to test
+	bsr	RealLoopbacktest
+
+	cmp.b	#0,d6			; Check if we had any return, if so we have a loopbackadapter installed.
+	beq	.noloopback
+
+	move.b	d6,shit
+	move.w	#5,SerialSpeed-V(a6)	; Set serialspeed to 5 ,(same as 0 but mark loopbackadapter)
+	move.b	#1,LoopB-V(a6)
+
+	lea	DDETECTED,a0
+	lea	.loopbackdone,a1
+	bra	DumpSerial
+
+.noloopback:
+	lea	NoLoopback,a0
+	lea	.loopbackdone,a1
+	bra	DumpSerial
+
+.loopbackdone:
+
+;	endc
 
 	cmp.b	#1,NoSerial-V(a6)	; Check if noserial is set
 	beq	.noser
@@ -1598,7 +1647,7 @@ GetInput:
 
 .getkey:
 	move.l	d0,d1
-	bsr	GetCharKey			; KUKEN
+	bsr	GetCharKey
 	cmp	#0,d0
 	beq	.nokey
 
@@ -2226,9 +2275,14 @@ CopyToChip:					; Copy data that needs to be in Chipmem from ROM for menusystem 
 	move.l	#EndRomEcsCopper-RomEcsCopper,d0
 	bsr	CopyMem
 
+	lea	RomEcsCopper2,a0
+	move.l	a6,a1
+	add.l	#ECSCopper2-V,a1
+	move.l	#EndRomEcsCopper2-RomEcsCopper2,d0
+	bsr	CopyMem
+
 
 	lea.l	MenuCopper-V(a6),a0
-	move.l	a0,shit-V(a6)
 ClearSprite:
 	move.w	#7,d0
 	move.l	a6,d1
@@ -2302,7 +2356,7 @@ Init_Serial:
 	lea	SerSpeeds,a0
 	move.l	(a0,d0),d0			; Load d0 with the value to write to the register for the correct speed.
 	move.w	d0,$dff032			; Set the speed of the serialport
-	move.b	#$4f,$bfd00			; Set DTR high
+	move.b	#$4f,$bfd000			; Set DTR high
 	move.w	#$0801,$dff09a
 	move.w	#$0801,$dff09c
 .noser:
@@ -5464,6 +5518,24 @@ CheckDetectedMBMem:
 	POP
 	rts
 
+ForceExtended16MBMem:
+	bsr	ClearScreen
+
+	lea	MemtestExtMBMemTxt,a0
+	move.l	#2,d1
+	bsr	Print
+
+	move.l	#$7000000,d0
+	move.l	#$7ffffff,d1
+
+	move.l	#0,d2
+	move.b	#0,CheckMemNoShadow-V(a6)
+	bsr	CheckMemory
+	bsr	WaitButton
+	bra	MemtestMenu
+
+
+
 CheckExtended16MBMem:
 	bsr	ClearScreen
 
@@ -6090,6 +6162,7 @@ IRQCIAIRQTest:
 
 	move.l	#IRQLevTest,$64			; Set up IRQ Level 1
 	clr.w	IRQLevDone-V(a6)		; Clear variable, we let the IRQ set it. if it gets set. we have working IRQ
+	move.w	#$9000,$dff09c
 	move.w	#$c004,$dff09a			; Enable IRQ
 	move.w	#$c004,$dff09a			; Enable IRQ
 	move.w	#$8004,$dff09c			; Trigger IRQ
@@ -6912,6 +6985,116 @@ GFXtest320x200:
 
 
 
+GFXTestScroll:
+	ifeq	a1k
+	
+	bsr	ClearScreen
+	move.l	#EndTestPic-TestPic+4096,d0
+	move.l	d0,d2
+	bsr	GetChip
+	cmp.l	#0,d0
+	beq	.exit
+	cmp.l	#1,d0
+	beq	.exit
+	move.l	#LOWRESSize+1024,d1
+	lea	ECSCopper2-V(a6),a0			; Location of copperlist in memory
+	lea	ECSTestColor,a1
+	bsr	FixECSCopper2
+
+
+	move.l	d0,a0					; Copy the address of start of screen to a0
+	move.l	d0,d7					; Make a backup of address
+	lea	TestPic,a1				; Set a1 to where testscreen is in ROM
+
+
+	move.w	#1023,d4
+.loop2:
+	move.w	#39,d3
+.loop:
+	move.b	(a1)+,(a0)+				; Copy testimage to Chipmem
+	dbf	d3,.loop
+	add.l	#4,a0
+	dbf	d4,.loop2
+
+
+
+	add.l	#62*44,d7
+.scrollloop:
+	cmp.b	#$bf,$dff006
+	bne	.scrollloop
+	bsr	.blit
+
+	bsr	GetInput
+	cmp.b	#1,BUTTON-V(a6)
+	bne	.scrollloop
+	
+.exit:
+	bsr	SetMenuCopper
+	bra	GFXtestMenu
+
+
+.blit:
+	PUSH
+	move.w	#3,d6
+.blitloop:
+	move.w	#113,d4
+	move.l	d7,a0
+	lea	JunkBuffer-V(a6),a1
+.copyloop:
+	move.b	(a0),d5
+	and.b	#%10000000,d5
+	lsr.l	#7,d5
+	move.b	d5,(a1)+
+	add.l	#44,a0
+	dbf	d4,.copyloop
+	
+	clr.w	$dff042
+	move.w	#$ffff,$dff044
+	move.w	#$ffff,$dff046
+	move.w	#$8040,$dff096
+	move.w	#$f9f0,$dff040
+	move.l	d7,d0
+	sub.l	#2,d0
+	move.l	d0,d1
+	add.l	#2,d1
+	move.l	d1,$dff050
+	move.l	d0,$dff054
+	move.w	#0,$dff066
+	move.w	#0,$dff064	
+	move.w	#114*64+22,$dff058
+	move.b	d5,40(a0)
+	VBLT
+
+	move.w	#113,d4
+	move.l	d7,a0
+	lea	JunkBuffer-V(a6),a1
+.copyloop2:
+	move.b	(a1)+,d5
+	and.b	#254,39(a0)
+	or.b	d5,39(a0)
+	add.l	#44,a0
+	dbf	d4,.copyloop2
+
+
+	add.l	#LOWRESSize+1024,d7
+	dbf	d6,.blitloop
+
+	POP
+	rts
+
+
+	else
+
+	bra	Not1K
+
+	endc
+
+
+
+
+
+
+
 							; INDATA:
 							;	a0 = ECSCopperlist
 							;	a1 = List of colors to be set
@@ -6956,6 +7139,73 @@ FixECSCopper:
 	bsr	SendSerial
 	move.l	a6,d0
 	add.l	#ECSCopper-V,d0
+	move.l	d0,$dff080			;Load new copperlist
+	lea	InitDONEtxt,a0
+	bsr	SendSerial
+
+	lea	InitCOPJMP1,a0
+	bsr	SendSerial
+	move.w	$dff088,d0
+	lea	InitDONEtxt,a0
+	bsr	SendSerial
+
+	lea	InitDMACON,a0
+	bsr	SendSerial
+	move.w	#$8380,$dff096
+	lea	InitDONEtxt,a0
+	bsr	SendSerial
+
+	lea	InitBEAMCON0,a0
+	bsr	SendSerial
+	move.w	#32,$dff1dc			;Hmmm
+	lea	InitDONEtxt,a0
+	bsr	SendSerial
+
+	lea	GFXtestNoSerial,a0
+	bsr	SendSerial
+;.exit:
+	POP
+	rts
+
+
+FixECSCopper2:
+	PUSH
+	add.l	#96,a0					; Add so we get to the spot where palette starts.
+	move.l	#31,d7
+	move.w	#$180,d6				; Start with $180
+.loop:
+	move.w	d6,(a0)+
+	move.w	(a1)+,(a0)+
+	add.w	#2,d6
+	dbf	d7,.loop				; Loop around and do all colors
+	
+
+
+	move.l	d0,d6
+
+	lea	GfxTestBpl-V(a6),a2
+
+	move.l	#4,d7
+.loop2:
+	move.l	d6,(a2)+
+	move.w	d6,6(a0)
+	swap	d6
+	move.w	d6,2(a0)
+	swap	d6
+	add.l	#8,a0
+	add.l	d1,d6
+	dbf	d7,.loop2				; Set all bitplanepointers
+
+
+
+
+.Slut:
+
+
+	lea	InitCOP1LCH,a0
+	bsr	SendSerial
+	move.l	a6,d0
+	add.l	#ECSCopper2-V,d0
 	move.l	d0,$dff080			;Load new copperlist
 	lea	InitDONEtxt,a0
 	bsr	SendSerial
@@ -7669,7 +7919,7 @@ PortTestSer:
 	cmp.b	#0,d2
 	beq	.donetest
 
-	bsr	.Loopbacktest
+	bsr	RealLoopbacktest
 	bra	.serloop
 
 .donetest:
@@ -7767,13 +8017,36 @@ PortTestSer:
 	bsr	Print
 	rts
 
+ClearSerial:					; Just read serialport, to empty it
+	move.l	#1,d6				; load d6 with 1, so we run this, twice to be sure serialbuffer is cleared
+.loop:
+	move.w	#$4000,$dff09a
+	move.w	#373,$dff032			; Set the speed of the serialport (9600BPS)
+	move.b	#$4f,$bfd000			; Set DTR high
+	move.w	#$0801,$dff09a
+	move.w	#$0801,$dff09c
 
-.Loopbacktest:					; Test if we have a loopbackadapter connected.
+	move.l	#10000,d7
+.timeoutloop2
+	move.b	$bfe001,d0			;nonsenseread
+	cmp.l	#0,d7
+	beq	.exitloop
+	sub.l	#1,d7
+	move.w	$dff018,d0
+	btst	#14,d0				; Buffer full, we have a new char
+	beq	.timeoutloop2
+.exitloop:
+	dbf	d6,.loop
+	rts
+
+
+
+RealLoopbacktest:				; Test if we have a loopbackadapter connected.
 						; Simply by outputing the char in D2 and check if the same char comes back.
 						; if so, 1 is added to D6
 	move.w	#$4000,$dff09a
 	move.w	#373,$dff032			; Set the speed of the serialport (9600BPS)
-	move.b	#$4f,$bfd100			; Set DTR high
+	move.b	#$4f,$bfd000			; Set DTR high
 	move.w	#$0801,$dff09a
 	move.w	#$0801,$dff09c
 
@@ -7794,9 +8067,9 @@ PortTestSer:
 	move.w	#$0001,$dff09c			; turn off the TBE bit
 
 
-	move.l	#100000,d7
-
+	move.l	#10000,d7
 .timeoutloop2
+	move.b	$bfe001,d0			;nonsenseread
 	cmp.l	#0,d7
 	beq	.exitloop
 	sub.l	#1,d7
@@ -8277,7 +8550,7 @@ KeyBoardTest:
 	move.b	#0,KeyBOld-V(a6)
 
 .loop:
-	bsr	GetCharKey			; Get chardata
+	bsr	GetInput
 	bsr	WaitShort			; just wait a short time
 	move.b	scancode-V(a6),d0
 	cmp.b	#0,d0
@@ -8366,10 +8639,8 @@ KeyBoardTest:
 	bsr	PrintChar
 .null:
 .samecode:
-
 	cmp.b	#$1b,Serial-V(a6)
 	beq	.exit
-	bsr	GetMouse
 	cmp.b	#1,MBUTTON-V(a6)
 	bne.w	.loop
 .exit:
@@ -9519,22 +9790,750 @@ DiskTest:
 	move.w	#8,MenuNumber-V(a6)
 	move.b	#1,PrintMenuFlag-V(a6)
 	bra	MainLoop
-	
+
+
+
+
 DiskdriveTest:
+	move.l	#12980,d0			; Size of a track
+	bsr	GetChip				; get chipmemaddress for this block
+	cmp.l	#0,d0
+	beq	.exit
+	move.l	d0,trackbuff-V(a6)
+	bsr	.Initdisk
+
+.DiskdriveTester:
 	bsr	ClearScreen
-	lea	UnderDevTxt,a0
-	move.l	#4,d1
-	bsr	Print
+	clr.b	oldbfe001-V(a6)
+	clr.b	oldbfd100-V(a6)
+
+	move.w	#0,MenuNumber-V(a6)
+	move.b	#1,PrintMenuFlag-V(a6)
+	move.l	#DriveTestMenu,Menu-V(a6)	; Set different menu
+
+
+
+
+	move.l	a6,d0
+	add.l	#DriveTestVar-V,d0		; Pointer to variables
+	move.l	d0,a0
+	move.l	d0,MenuVariable-V(a6)
+
 
 .loop:
+	bsr	.StepToTrack			; Check if drivestepping is needed, if so do it
+	move.l	MenuVariable-V(a6),a0		; Load a0 with pointer to where variable is
+	clr.l	d0
+	move.w	DriveNo-V(a6),d0		; Load with drivenumber
+	mulu	#5,d0				; Multiply it with 4 to get to correct drivetext
+	lea	DF0,a1
+	add.l	d0,a1
+	move.w	DriveOK-V(a6),d0
+	cmp.b	#0,d0
+	bne	.driveok
+	move.w	#1,(a0)+
+	bra	.okdone
+.driveok:
+	move.w	#2,(a0)+
+.okdone:
+	move.l	a1,(a0)+
+	
+	move.l	#6,d0				; Show Tracknumber
+	move.l	#2,d1
+	bsr	SetPos
+	lea	Track,a0
+	move.l	#3,d1
+	bsr	Print
+	lea	Space3,a0
+	bsr	Print
+	move.l	#13,d0
+	move.l	#2,d1
+	bsr	SetPos
 
+	clr.l	d0
+	move.b	TrackNo-V(a6),d0
+	bsr	bindec
+	move.l	#5,d1
+	bsr	Print
+
+	clr.l	d7				; Clear d7, if still clear after those 2 tests, nothing to update
+	move.b	$bfe001,d0
+	cmp.b	oldbfe001-V(a6),d0
+	beq	.nobfe001change
+	move.b	d0,oldbfe001-V(a6)
+	move.b	#1,d7				; just set d7 to something
+.nobfe001change:
+	move.b	$bfd100,d0
+	cmp.b	oldbfd100-V(a6),d0
+	beq	.nobfd100change
+	move.b	d0,oldbfd100-V(a6)
+	move.b	#1,d7
+.nobfd100change:
+	cmp.b	#0,d7
+	beq	.noupdate			; we had no update. skip to print it
+	
+
+	move.l	#18,d0				; Show diskside
+	move.l	#2,d1
+	bsr	SetPos
+	lea	Side,a0
+	move.l	#3,d1
+	bsr	Print
+	cmp.b	#0,SideNo-V(a6)
+	bne	.Lower
+	lea	UPPER,a0
+	move.l	#5,d1
+	bsr	Print
+;	bclr.b	#2,$bfd100
+
+	bra	.SideDone
+.Lower:
+	lea	LOWER,a0
+	move.l	#5,d1
+	bsr	Print
+;	bset.b	#2,$bfd100
+
+.SideDone:
+
+	move.l	#32,d0				; Show motorstatus
+	move.l	#2,d1
+	bsr	SetPos
+	lea	Motor,a0
+	move.l	#3,d1
+	bsr	Print
+	btst	#7,$bfd100
+	beq	.MotorIsOn
+	lea	OFF,a0
+	move.l	#5,d1
+	bsr	Print
+	bra	.MotorDone
+.MotorIsOn:
+	lea	ON,a0
+	move.l	#5,d1
+	bsr	Print
+
+.MotorDone:
+
+
+	move.l	#45,d0				; Show writeprotectionstatus
+	move.l	#2,d1
+	bsr	SetPos
+	lea	WProtect,a0
+	move.l	#3,d1
+	bsr	Print
+	btst	#3,$bfe001
+	beq	.nowrite
+	lea	OFF,a0
+	move.l	#2,d1
+	bsr	Print
+	bra	.writedone
+.nowrite:
+	lea	ON,a0
+	move.l	#1,d1
+	bsr	Print
+.writedone:
+	move.l	#64,d0				; Show disk status
+	move.l	#2,d1
+	bsr	SetPos
+	lea	DiskIN,a0
+	move.l	#3,d1
+	bsr	Print
+	btst	#2,$bfe001
+	beq	.nochange
+	lea	YES,a0
+	move.l	#2,d1
+	bsr	Print
+	bra	.changedone
+.nochange:
+	lea	NO,a0
+	move.l	#1,d1
+	bsr	Print
+.changedone:
+
+
+	move.l	#6,d0				; Show Tracknumber
+	move.l	#3,d1
+	bsr	SetPos
+	lea	RDY,a0
+	move.l	#3,d1
+	bsr	Print
+
+	btst	#5,$bfe001
+	bne	.nordy
+	lea	YES,a0
+	move.l	#2,d1
+	bsr	Print
+	bra	.rdydone
+.nordy:
+	lea	NO,a0
+	move.l	#1,d1
+	bsr	Print
+.rdydone:
+
+	move.l	#18,d0				; Show Tracknumber
+	move.l	#3,d1
+	bsr	SetPos
+	lea	TRACK0,a0
+	move.l	#3,d1
+	bsr	Print
+
+	btst	#4,$bfe001
+	bne	.notrk0
+	lea	YES,a0
+	move.l	#2,d1
+	bsr	Print
+	bra	.trk0done
+.notrk0:
+	lea	NO,a0
+	move.l	#1,d1
+	bsr	Print
+
+.trk0done:
+	move.l	#36,d0
+	move.l	#3,d1
+	bsr	SetPos
+	lea	BFE001Txt,a0
+	move.l	#3,d1
+	bsr	Print
+	move.b	$bfe001,d0
+	bsr	binstringbyte
+	move.l	#6,d1
+	bsr	Print
+
+
+	move.l	#56,d0
+	move.l	#3,d1
+	bsr	SetPos
+	lea	BFD100Txt,a0
+	move.l	#3,d1
+	bsr	Print
+
+	move.b	$bfd100,d0
+	bsr	binstringbyte
+	move.l	#6,d1
+	bsr	Print
+
+.noupdate:
+	bsr	PrintMenu
 	bsr	GetInput
-	cmp.b	#1,BUTTON-V(a6)
-	bne	.loop
+	bsr	WaitLong
+	cmp.b	#0,d0
+	beq	.no
+
+
+	move.b	keyresult-V(a6),d1		; Read value from last keyboard read
+	cmp.b	#$a,d1				; if it was enter, select this item
+	beq	.action
+	move.b	Serial-V(a6),d2			; Read value from last serialread
+	cmp.b	#$a,d2
+	beq	.action
+	cmp.b	#1,LMB-V(a6)
+	beq	.action
+
+	lea	DriveTestMenuKey,a5		; Load list of keys in menu
+	clr.l	d0				; Clear d0, this is selected item in list
+
+.keyloop:
+	move.b	(a5)+,d3			; Read item
+	cmp.b	#0,d3				; Check if end of list
+	beq	.nokey
+	cmp.b	d1,d3				; fits with keyboardread?
+	beq	.goaction
+	cmp.b	d2,d3				; fits with serialread?
+	beq	.goaction			; if so..  do it
+	add.l	#1,d0				; Add one to d0, selecting next item
+	bra	.keyloop
+.goaction:
+	move.b	d0,MenuPos-V(a6)
+	bra	.action
+
+.nokey:	
+	cmp.b	#1,RMB
+	beq	Exit
+	bra	.no
+
+.action:
+	bsr	WaitReleased
+
+	clr.l	d0
+	move.b	MenuPos-V(a6),d0
+
+	cmp.b	#0,d0				; Check if it is item 0, meaning change drive ID
+	beq	.ChangeDrive
+
+	cmp.b	#1,d0
+	beq	.Motor
+
+	cmp.b	#2,d0
+	beq	.Side
+
+	cmp.b	#3,d0
+	beq	.TrackOut
+
+	cmp.b	#4,d0
+	beq	.TrackIn
+
+	cmp.b	#5,d0
+	beq	.Track10Out
+
+	cmp.b	#6,d0
+	beq	.Track10In
+
+	cmp.b	#7,d0
+	beq	.ReadTrack
+
+	cmp.b	#8,d0
+	beq	.WriteTrack
+
+	cmp.b	#9,d0
+	beq	.ShowMem
+
+	cmp.b	#11,d0
+	beq	MainMenu
+
+
+.no:
+	bra	.loop
+
+.ChangeDrive:
+	move.b	#1,UpdateMenuNumber-V(a6)
+	move.b	#2,PrintMenuFlag-V(a6)
+
+	add.w	#1,DriveNo-V(a6)		; Bump up drivenumber with 1
+	cmp.w	#4,DriveNo-V(a6)		; if it is too high
+	bne	.nowrap
+	clr.w	DriveNo-V(a6)			; Reset the counter
+.nowrap
+	bsr	.SelectDrive
+	bsr	.GotoZero
+	bra	.no
+
+
+.Motor:
+	bchg	#0,DriveMotor-V(a6)
+	cmp.b	#0,DriveMotor-V(a6)
+	bne	.SetMotorOn
+	bsr	.MotorOff
+	bra	.MotorSetDone
+.SetMotorOn:
+	lea	ON,a0
+	move.l	#5,d1
+	bsr	Print
+	bsr	.MotorOn
+.MotorSetDone:
+	bra	.no
+
+
+.Side:
+	bchg	#0,SideNo-V(a6)
+	bra	.no
+
+.TrackOut:
+	add.b	#1,WantedTrackNo-V(a6)
+	cmp.b	#84,WantedTrackNo-V(a6)
+	beq	.outover
+	bra	.no
+.outover:
+	move.b	#83,WantedTrackNo-V(a6)
+	bra	.no
+
+
+.TrackIn:
+	sub.b	#1,WantedTrackNo-V(a6)
+	cmp.b	#255,WantedTrackNo-V(a6)
+	beq	.outless
+	bra	.no
+.outless
+	move.b	#0,WantedTrackNo-V(a6)
+	bra	.no
+
+.Initdisk:
+	move.w	#$4489,$dff07e			; Disk sync pattern register for disk read
+	move.w	#$7f00,$dff09e			; Audio, Disk, UART Control
+	move.w	#$9500,$dff09e			; Check later what it does... MEMPREC, FAST, WORDSYNC set
+	clr.w	DriveNo-V(a6)			; Set drivenumber to 0
+	bsr	.SelectDrive			; Select the drive
+	bsr	.GotoZero			; Step to track 0
+	bsr	.UnSelectDrive
+	rts
+		
+.Track10Out:
+	add.b	#10,WantedTrackNo-V(a6)
+	cmp.b	#83,WantedTrackNo-V(a6)
+	bge	.outover
+	bra	.no
+
+.Track10In:
+	sub.b	#10,WantedTrackNo-V(a6)
+	cmp.b	#255,WantedTrackNo-V(a6)
+	ble	.outless
+	bra	.no
+
+.GotoZero:					; Steps back to track 0
+	move.w	#1,DriveOK-V(a6)		; Set Drive as OK
+	move.l	#84,d7				; Do this for 85 times (meaning more tracks than on a disk)
+.ZeroLoop
+	bsr	WaitLong			; Wait for a while
+
+	btst	#4,$bfe001			; Are we at track 0?
+	bne	.nozero
+	clr.b	TrackNo-V(a6)			; Clear trackno
+	clr.b	WantedTrackNo-V(a6)		; Also clear the wanted trackno, or it will just step there.
+	rts
+.nozero:
+	move.w	#$ff,$dff180
+	bset.b	#1,$bfd100			; CIAB_DSKDIREC
+	bclr.b	#0,$bfd100			; Step
+	tst	$dff1fe
+	bset	#0,$bfd100
+	dbf	d7,.ZeroLoop			; do this until all "tracks" are done, if this loop goes to an end. we have for sure no diskdrive
+	clr.w	DriveOK-V(a6)			; Set that drive was NOT ok
+
+	rts
+
+.StepToTrack:					; Check the WantedTrackNo and steps one step to that direction
+	clr.l	d0
+	move.b	WantedTrackNo-V(a6),d0		; Load D0 with the wanted track
+	cmp.b	TrackNo-V(a6),d0
+	beq	.AlreadyThere			; ok we are already at wanted position. do nothing
+	blt	.GoIn				; Lets step in
+	bgt	.GoOut
+.AlreadyThere:
+	rts
+
+.GoOut:
+	bsr	.SelectDrive
+	bsr	WaitLong
+	bclr.b	#1,$bfd100			; CIAB_DSKDIREC
+	bclr.b	#0,$bfd100			; Step
+	tst	$dff1fe
+	bset	#0,$bfd100
+	add.b	#1,TrackNo-V(a6)
+	bsr	WaitLong
+	bsr	.UnSelectDrive
+	rts
+
+.GoIn:
+	bsr	.SelectDrive
+	bsr	WaitLong
+	bset.b	#1,$bfd100			; CIAB_DSKDIREC
+	bclr.b	#0,$bfd100			; Step
+	tst	$dff1fe
+	bset	#0,$bfd100
+	sub.b	#1,TrackNo-V(a6)
+	bsr	WaitLong
+	bsr	.UnSelectDrive
+	rts
+
+
+.MotorOff:
+	bsr	.SelectDrive
+	or.b	#$78,$bfd100			; Deselect all drives
+	bsr	WaitLong
+	clr.l	d0
+	move.w	DriveNo-V(a6),d0		; load A6 with drive to select
+	add.w	#3,d0				; Add 3 to it.  now we know what bit to clear to select drive
+	bset.b	#7,$bfd100			; CIAB_DSKMOTOR
+	bsr	WaitLong
+	bclr.b	d0,$bfd100			; CIAB_DSKSEL0	Select that drive
+	bsr	.UnSelectDrive
+
+	rts
+
+.MotorOn:
+	bsr	.SelectDrive
+	bsr	WaitLong
+	clr.l	d0
+	move.w	DriveNo-V(a6),d0		; load A6 with drive to select
+	add.w	#3,d0				; Add 3 to it.  now we know what bit to clear to select drive
+	bclr.b	#7,$bfd100			; CIAB_DSKMOTOR
+	bsr	WaitLong
+	bclr.b	d0,$bfd100			; CIAB_DSKSEL0	Select that drive
+	rts
+
+.SelectDrive:
+	bsr	.UnSelectDrive
+	clr.l	d0
+	move.w	DriveNo-V(a6),d0		; load D0 with drive to select
+	add.w	#3,d0				; Add 3 to it.  now we know what bit to clear to select drive
+
+	bclr.b	d0,$bfd100			; Select that drive
+	bsr	WaitLong
+	rts
+
+.UnSelectDrive:
+	or.b	#$78,$bfd100			; Deselect all drives
+	bsr	WaitLong
+	rts
+
+.ReadTrack:
+	bsr	.SelectDrive
+	bsr	WaitLong
+	bsr	.MotorOn
+	bsr	.WaitReady
+	bsr	.SelectDrive			; YEAH!  again
+	
+	move.w	#$4000,$dff024
+	move.l	trackbuff-V(a6),$dff020
+	move.w	#$4489,$dff07e
+	move.w	#$7f00,$dff09e
+	move.w	#$9500,$dff09e
+	move.w	#2,$dff09c	
+	move.w	#$8210,$dff096
+
+	move.w	#$8000+$1900,d1
+	move.w	d1,$dff024
+	move.w	d1,$dff024
+
+	move.w	#$fff,$dff180
+	move.l	#$ffffff,d7
+.waittrack:
+	move.b	$bfe001,d0			; Nonsenseread, to just make loop slower
+	sub.l	#1,d7
+	cmp.l	#0,d7
+	beq	.timeout
+	btst	#1,$dff01f
+	beq	.waittrack
+.timeout:
+	move.w	#$4000,$dff024
+	bsr	WaitLong
+	bsr	.MotorOff
+	bsr	WaitLong
+	bsr	.UnSelectDrive
+	bra	.no
+
+
+.WriteTrack:
+	bsr	.SelectDrive
+	bsr	WaitLong
+	bsr	.MotorOn
+	bsr	.WaitReady
+	bsr	.SelectDrive			; YEAH!  again!
+
+;	move.w	#$4000,$dff024
+	move.l	trackbuff-V(a6),$dff020
+;	move.w	#$4489,$dff07e
+	move.w	#$7f00,$dff09e
+	move.w	#$8100,$dff09e
+	move.w	#2,$dff09c	
+	move.w	#$8210,$dff096
+
+	move.w	#$d978,$dff024
+	move.w	#$d978,$dff024
+
+	move.w	#$f00,$dff180
+	move.l	#$ffffff,d7
+.waittrack2:
+	move.b	$bfe001,d0			; Nonsenseread, to just make loop slower
+	sub.l	#1,d7
+	cmp.l	#0,d7
+	beq	.timeout2
+	btst	#1,$dff01f
+	beq	.waittrack2
+.timeout2:
+	move.w	#$4000,$dff024
+	bsr	.UnSelectDrive
+	bra	.no
+
+
+
+.WaitReady:
+	move.l	#$ffff,d7
+.waitrdy:
+	move.b	$bfe001,d0
+	sub.l	#1,d7
+	cmp.l	#0,d7
+	beq	.readytimeout
+	btst	#5,$bfe001
+	beq	.waitrdy
+.readytimeout:
+	rts
+	
+.ShowMem:
+	clr.l	d3				; Sector to find
+.Showmems:
+	bsr	ClearScreen
+
+	PUSH
+
+
+	bsr	.FindSector
+	cmp.l	#-1,d0				; Was d0 -1, then we had an error
+	beq	.sectorerror
+
+	lea	$38(a1),a1
+	clr.l	d6				; Clear rowcounter
+	clr.l	d5				; clear "address" of how far into buffer we are
+
+	
+
+.secloop:
+	lea	sectorbuff-V(a6),a2
+	bsr	.decodebuffer
+	PUSH
+	move.l	d6,d0
+	lea	sectorbuff-V(a6),a0
+	bsr	.Showdata
+	POP
+	add.l	#$10,d5
+	add.l	#1,d6
+	cmp.l	#20,d6
+	bne	.secloop	
+	POP
+
+	lea	AnyKeyMouseTxt,a0
+	move.l	#4,d1
+	bsr	Print
+.exloop:
+	bsr	GetInput
+	cmp.b	#0,BUTTON-V(a6)
+	beq	.exloop
+
+
+	cmp.b	#1,RMB-V(a6)
+
+; 	bne.w	.Showmems
+	
+	bra	.DiskdriveTester
+
+
+
+.exit:
 	bra	MainMenu
 
-;hexbytetobin
+.decodebuffer:					; Decodes a small part of the MFM buffer to be able to print it.
+	move.l	#$55555555,d7
+	move.l	#3,d4
+.decode:
+	move.l	$200(a1),d1
+	move.l	(a1)+,d0
+	and.l	d7,d0
+	asl.l	#1,d0
+	and.l	d7,d1
+	or.l	d1,d0
+	move.l	d0,(a2)+			; Store it in the small buffer
 
+	dbra	d4,.decode
+	rts
+
+.sectorerror
+	bsr	ClearScreen
+	lea	SectorErrorTxt,a0
+	move.l	#1,d1
+	bsr	Print
+	lea	AnyKeyMouseTxt,a0
+	move.l	#4,d1
+	bsr	Print
+	bsr	WaitButton
+	bra	.DiskdriveTester
+
+
+.FindSector
+	move.l	trackbuff-V(a6),a0		; A0 now contains pointer to where the MFM data is
+	move.l	a0,a1
+	move.w	#$4489,d5			; Syncword
+	move.l	#$55555555,d7
+
+	clr.l	d3
+;	move.b	sector-V(a6),d3			; Load d3 with the wanted sector
+	move.l	a0,d6
+	add.l	#12980,d6			; D6 now contains the last address of trackbuffer
+.getsync:
+	cmp.l	a1,d6
+	blt	.overflow			; ok we went too far
+	cmp.w	(a1)+,d5
+	bne.s	.getsync
+;	cmp.w	(a1),d5				; Another syncword?
+;	beq.s	.getsync
+
+
+
+
+;	add.l	#6,a1
+	move.l	(a1),d0
+	move.l	4(a1),d1
+
+	and.l	d7,d0
+	asl.l	#1,d0
+	and.l	d7,d1
+	or.l	d1,d0
+	ror.l	#8,d0
+
+	PUSH
+	bsr	binhex
+	move.l	#3,d1
+	bsr	Print
+	clr.l	d0
+	move.b	#" ",d0
+	bsr	PrintChar
+
+	move.l	a1,d0
+	bsr	binhex
+	move.l	#5,d1
+	bsr	Print
+	clr.l	d0
+	move.b	#" ",d0
+	bsr	PrintChar
+
+
+	POP
+
+;	cmp.b	d3,d0				; Are we on correct sector?
+;	beq	.sectorOK			; Yes
+	move.b	d0,sector-V(a6)
+
+.sectorOK:	
+	clr.l	d0
+	rts
+
+.overflow:
+	move.l	#-1,d0				; Set d0 to -1 to show that we had an error.
+	rts
+
+
+.Showdata:
+	PUSH
+	move.l	a0,a1				; store a0 in a1 for usage here.. as a0 is used
+	add.l	#3,d0				; Add 3 to line to work on.
+	move.l	d0,d1				; copy d0 to d1 to use it as Y adress
+	clr.l	d0				; clear X pos
+	bsr	SetPos				; Set position
+	
+	move.l	d5,d0
+	bsr	binhex
+	move.l	#6,d1
+	bsr	Print				; Print address
+
+	clr.l	d2				; Column to print
+	move.l	#15,d7
+.showloop:
+	lea	SpaceTxt,a0
+	bsr	Print
+	clr.l	d0				; Clear d0 just to be sure
+	move.b	(a1,d2),d0
+	bsr	binhexbyte			; Convert that byte to hex
+	move.l	#7,d1
+	bsr	Print				; Print it
+	add.l	#1,d2
+	dbf	d7,.showloop
+	lea	ColonTxt,a0			; Print a Colon
+	move.l	#3,d1
+	bsr	Print
+
+	move.l	#15,d7				; Now print the same bytes.  as chars instead	
+	clr.l	d2
+.showloop2:
+	clr.l	d0
+	move.b	(a1,d2),d0
+	bsr	MakePrintable			; make the char printable.  strip controlstuff..
+	add.l	#1,d2
+	move.l	#7,d1
+	bsr	PrintChar
+	dbf	d7,.showloop2
+	POP
+	rts
+
+	
 PrintYes:
 	lea	YES,a0
 	move.l	#2,d1
@@ -9963,7 +10962,7 @@ ForceSer:					; For debug. print stuff on serialport. if port disabled force 960
 .noserial:
 	move.w	#$4000,$dff09a
 	move.w	#373,$dff032			; Set the speed of the serialport (9600BPS)
-	move.b	#$4f,$bfd100			; Set DTR high
+	move.b	#$4f,$bfd000			; Set DTR high
 	move.w	#$0801,$dff09a
 	move.w	#$0801,$dff09c
 	bra	.serial
@@ -10015,6 +11014,31 @@ DumpHexLong:
 	jmp	(a3)
 
 
+DumpClearSerial:				; Just read serialport, to empty it, this is pre-memory, so no return.
+						; a0 contains jumpaddress where to go after exiting
+	move.l	#1,d6				; load d6 with 1, so we run this, twice to be sure serialbuffer is cleared
+.loop:
+	move.w	#$4000,$dff09a
+	move.w	#373,$dff032			; Set the speed of the serialport (9600BPS)
+	move.b	#$4f,$bfd000			; Set DTR high
+	move.w	#$0801,$dff09a
+	move.w	#$0801,$dff09c
+
+	move.l	#10000,d7
+.timeoutloop2
+	move.b	$bfe001,d0			;nonsenseread
+	cmp.l	#0,d7
+	beq	.exitloop
+	sub.l	#1,d7
+	move.w	$dff018,d0
+	btst	#14,d0				; Buffer full, we have a new char
+	beq	.timeoutloop2
+.exitloop:
+	dbf	d6,.loop
+	jmp	(a0)				; Jump to a0
+
+
+
 DumpSerial:				; This is only for PRE-Memory usage. Dumps a string to serialport.
 					; IN:
 					; a0 = String to put out on serial port.
@@ -10029,7 +11053,7 @@ DumpSerial:				; This is only for PRE-Memory usage. Dumps a string to serialport
 	bne	.nomore
 	move.w	#$4000,$dff09a
 	move.w	#373,$dff032			; Set the speed of the serialport (9600BPS)
-	move.b	#$4f,$bfd100			; Set DTR high
+	move.b	#$4f,$bfd000			; Set DTR high
 	move.w	#$0801,$dff09a
 	move.w	#$0801,$dff09c
 
@@ -10075,7 +11099,7 @@ DumpSerialChar:				; This is only for PRE-Memory usage. Dumps a string to serial
 
 	move.w	#$4000,$dff09a
 	move.w	#373,$dff032			; Set the speed of the serialport (9600BPS)
-	move.b	#$4f,$bfd100			; Set DTR high
+	move.b	#$4f,$bfd000			; Set DTR high
 	move.w	#$0801,$dff09a
 	move.w	#$0801,$dff09c
 
@@ -10106,7 +11130,7 @@ Loopbacktest:					; Test if we have a loopbackadapter connected.
 						; if so, 1 is added to D6
 	move.w	#$4000,$dff09a
 	move.w	#373,$dff032			; Set the speed of the serialport (9600BPS)
-	move.b	#$4f,$bfd100			; Set DTR high
+	move.b	#$4f,$bfd000			; Set DTR high
 	move.w	#$0801,$dff09a
 	move.w	#$0801,$dff09c
 
@@ -10127,9 +11151,10 @@ Loopbacktest:					; Test if we have a loopbackadapter connected.
 	move.w	#$0001,$dff09c			; turn off the TBE bit
 
 
-	move.l	#100000,d7
+	move.l	#10000,d7
 
 .timeoutloop2
+	move.b	$bfe001,d0			; Nonsenseread
 	cmp.l	#0,d7
 	beq	.exitloop
 	sub.l	#1,d7
@@ -10176,7 +11201,6 @@ InputHexNum:					; Inputs a 32 bit hexnumber
 	move.b	#1,d7				; We had a nonzero.  set d7 to 1 so we handle 0 in the future
 .zero:
 	dbf	d0,.hexloop			; Copy string to defaultadress to be shown
-	move.l	a0,shit-V(a6)
 
 	lea	CheckMemStartAdrTxt-V(a6),a5	; Store pointer to string at a5
 	move.l	a5,a0
@@ -10201,6 +11225,10 @@ InputHexNum:					; Inputs a 32 bit hexnumber
 	cmp.b	#"x",d0				; did user press X?
 	beq	.xpressed
 
+	cmp.b	#$7f,d0				; did we have backspace from serial?
+	beq	.backspace
+
+
 .gethex:
 	bsr	GetHex				; Strip it to hexnumbers
 	cmp.b	#0,d0				; if returned value is 0, we had no keypress
@@ -10210,9 +11238,11 @@ InputHexNum:					; Inputs a 32 bit hexnumber
 	cmp.b	#$a,d0				; did user press enter?
 	beq	.enter				; if so, we are done
 
+
 	cmp.b	#$8,d0				; Did we have a backspace?
 	bne	.nobackspace			; no
 						; oh. we had. lets erase one char
+.backspace:
 	move.b	#$0,(a5,d6)			; Store a null at that position
 	cmp.b	#0,d6				; check if we are at the back?
 	beq	.backmax			; yes, do not remove
@@ -10307,9 +11337,6 @@ InputHexNum:					; Inputs a 32 bit hexnumber
 	bsr	SetPos
 	lea	CheckMemStartAdrTxt-V(a6),a0
 	bsr	hexbin
-	bsr	binhex
-	move.l	#3,d1
-	bsr	Print				; Print the result in yellow, so user can se the confirmed adress
 	POP
 	move.l	HexBinBin-V(a6),d0		; return the value
 	rts
@@ -11975,6 +13002,17 @@ RomEcsCopper:
 
 	dc.l	$fffffffe	;End of copperlist
 EndRomEcsCopper:
+RomEcsCopper2:
+	dc.l	$01200000,$01220000,$01240000,$01260000,$01280000,$012a0000,$012c0000,$012e0000,$01300000,$01320000,$01340000,$01360000,$0138000,$013a0000,$013c0000,$013e0000
+	dc.l	$01005200,$00920038,$009400d0,$008e2c81,$00902cc1,$01020000,$01080004,$010a0004
+
+	blk.l	32,0
+;MenuBplPnt2:
+	dc.l	$00e00000,$00e20000,$00e40000,$00e60000,$00e80000,$00ea0000,$00ec0000,$00ee0000,$00f00000,$00f20000
+
+	dc.l	$fffffffe	;End of copperlist
+EndRomEcsCopper2:
+
 ECSColor32:
 	dc.w	$000,$fff,$eee,$ddd,$ccc,$aaa,$999,$888,$777,$555,$444,$333,$222,$111,$f00,$800
 	dc.w	$400,$0f0,$080,$040,$00f,$008,$004,$ff0,$880,$440,$f0f,$808,$404,$0ff,$088,$044
@@ -12158,6 +13196,10 @@ II:
 	dc.b	" II",0
 III:
 	dc.b	"III",0
+UPPER:
+	dc.b	"Upper",0
+LOWER:
+	dc.b	"Lower",0
 OOK:
 	dc.b	" "	; Combined with next will generate a space before OK. nothing between here
 OK:
@@ -12178,6 +13220,34 @@ ticks:
 	dc.b	" Ticks",0
 Bytes:
 	dc.b	" Bytes",0
+DF0:
+	dc.b	"DF0:",0
+DF1:
+	dc.b	"DF1:",0
+DF2:
+	dc.b	"DF2:",0
+DF3:
+	dc.b	"DF3:",0
+
+Track:
+	dc.b	"Track: ",0
+Side:
+	dc.b	"Side: ",0
+Motor:
+	dc.b	"Motor: ",0
+WProtect:
+	dc.b	"WProtection: ",0
+DiskIN:
+	dc.b	"Disk: ",0
+RDY:
+	dc.b	"Ready: ",0
+TRACK0:
+	dc.b	"Track0: ",0
+BFE001Txt:
+	dc.b	"$bfe001: ",0
+BFD100Txt:
+	dc.b	"$bfd100: ",0
+
 	EVEN
 SerSpeeds:		; list of Baudrates (3579545/BPS)+1
 	dc.l	0,1492,373,94,32,0,0
@@ -12192,12 +13262,12 @@ MenuKeys:
 	dc.l	MainMenuKey,0,AudioMenuKey,MemtestMenuKey,IRQCIAtestMenuKey,GFXtestMenuKey,PortTestMenuKey,OtherTestKey,DiskTestMenuKey,0,0
 
 MainMenuText:
-	dc.b	"                             DiagROM "
+	dc.b	"                    DiagROM "
 		ifne	a1k
 		dc.b	"A1000 "
 		endc
 	VERSION
-	dc.b	" - "
+	dc.b	" - Amiga32 Edition"," - "
 	incbin	"ram:BootDate.txt"
 	dc.b	$a
 	dc.b	"                        By John (Chucky / The Gang) Hertell",$a,$a
@@ -12252,6 +13322,41 @@ UnusedChipTxt:
 SystemInfoHWTxt:
 	dc.b	2,"Dump of all readable Custom Chipset HW Registers:",$a,0
 
+	EVEN
+DriveTestMenu:
+	dc.l	DriveTestMenuItems,0
+	dc.l	0
+DriveTestMenuItems:
+	dc.l	DriveTestMenu0,DriveTestMenu1,DriveTestMenu2,DriveTestMenu3,DriveTestMenu4,DriveTestMenu5,DriveTestMenu6,DriveTestMenu7,DriveTestMenu8,DriveTestMenu9,DriveTestMenu10,DriveTestMenu11,DriveTestMenu12,0
+DriveTestMenuKey:
+	dc.b	"1","2","3","4","5","6","7","8","9","s","0",$1b,0
+DriveTestMenu0:
+	dc.b	2,"Diskdrivetesting Menu",0
+DriveTestMenu1:
+	dc.b	"1 - Select disk: ",0
+DriveTestMenu2:
+	dc.b	"2 - Motor",0
+DriveTestMenu3:
+	dc.b	"3 - Change side",0
+DriveTestMenu4:
+	dc.b	"4 - Step out",0
+DriveTestMenu5:
+	dc.b	"5 - Step in",0
+DriveTestMenu6:
+	dc.b	"6 - Step out 10 tracks",0
+DriveTestMenu7:
+	dc.b	"7 - Step in 10 tracks",0
+DriveTestMenu8:
+	dc.b	"8 - Read track to buffer",0
+DriveTestMenu9:
+	dc.b	"9 - Write track from buffer **DANGEROUS EXPERIMENTAL**",0
+DriveTestMenu10:
+	dc.b	"S - Show first read sector (random) in buffermem",0
+DriveTestMenu11:
+	dc.b	"0 - Automatic test of selected disk",0
+DriveTestMenu12:
+	dc.b	"Esc - Exit from menu",0
+
 AudioMenuText:
 	dc.b	2,"Audiotests",$a,$a,0
 AudioMenu1:
@@ -12271,6 +13376,8 @@ AudioMenuKey:
 AudioSimpleMenu:
 	dc.l	AudioSimpleWaveItems,0
 	dc.l	0
+AudioSimpleWaveItems:
+	dc.l	AudioSimpleWaveText,AudioSimpleWaveMenu1,AudioSimpleWaveMenu2,AudioSimpleWaveMenu3,AudioSimpleWaveMenu4,AudioSimpleWaveMenu5,AudioSimpleWaveMenu6,AudioSimpleWaveMenu7,AudioSimpleWaveMenu8,0,0
 AudioSimpleWaveText:
 	dc.b	2,"Simple Audiowavetest",0
 AudioSimpleWaveMenu1:
@@ -12310,10 +13417,6 @@ AudioModName:
 AudioModInst:
 	dc.b	$a,"Instruments:",$a,0
 	EVEN	
-
-AudioSimpleWaveItems:
-	dc.l	AudioSimpleWaveText,AudioSimpleWaveMenu1,AudioSimpleWaveMenu2,AudioSimpleWaveMenu3,AudioSimpleWaveMenu4,AudioSimpleWaveMenu5,AudioSimpleWaveMenu6,AudioSimpleWaveMenu7,AudioSimpleWaveMenu8,0,0
-
 MemtestText:
 	dc.b	2,"Memorytests",$a,$a,0
 MemtestMenu1:
@@ -12325,22 +13428,24 @@ MemtestMenu3:
 MemtestMenu4:
 	dc.b	"4 - Fast scan of 16MB fastmem-areas",0
 MemtestMenu5:
-	dc.b	"5 - Large Fast scan of fastmem-areas",0
+	dc.b	"5 - Slow scan of 16MB fastmem-areas",0
 MemtestMenu6:
-	dc.b	"6 - Manual memorytest",0
+	dc.b	"6 - Large Fast scan of fastmem-areas",0
 MemtestMenu7:
-	dc.b	"7 - Manual memoryedit",0
+	dc.b	"7 - Manual memorytest",0
 MemtestMenu8:
-	dc.b	"8 - Autoconfig - Automatic",0
+	dc.b	"8 - Manual memoryedit",0
 MemtestMenu9:
-	dc.b	"9 - Mainmenu",0
+	dc.b	"9 - Autoconfig - Automatic",0
+MemtestMenu10:
+	dc.b	"0 - Mainmenu",0
 	EVEN
 MemtestMenuItems:
-	dc.l	MemtestText,MemtestMenu1,MemtestMenu2,MemtestMenu3,MemtestMenu4,MemtestMenu5,MemtestMenu6,MemtestMenu7,MemtestMenu8,MemtestMenu9,0
+	dc.l	MemtestText,MemtestMenu1,MemtestMenu2,MemtestMenu3,MemtestMenu4,MemtestMenu5,MemtestMenu6,MemtestMenu7,MemtestMenu8,MemtestMenu9,MemtestMenu10,0
 MemtestMenuCode:
-	dc.l	CheckDetectedChip,CheckExtendedChip,CheckDetectedMBMem,CheckExtended16MBMem,CheckExtendedMBMem,CheckMemManual,CheckMemEdit,AutoConfig,MainMenu
+	dc.l	CheckDetectedChip,CheckExtendedChip,CheckDetectedMBMem,CheckExtended16MBMem,ForceExtended16MBMem,CheckExtendedMBMem,CheckMemManual,CheckMemEdit,AutoConfig,MainMenu
 MemtestMenuKey:
-	dc.b	"1","2","3","4","5","6","7","8","9",0
+	dc.b	"1","2","3","4","5","6","7","8","9","0",0
 	EVEN
 OtherTestItems:
 	dc.l	OtherTestText,OtherTestMenu1,OtherTestMenu2,OtherTestMenu3,0
@@ -12514,11 +13619,11 @@ IRQCIAIRQTestText2:
 
 	EVEN
 GFXtestMenuItems:
-	dc.l	GFXtestText,GFXtestMenu1,GFXtestMenu2,GFXtestMenu3,0
+	dc.l	GFXtestText,GFXtestMenu1,GFXtestMenu2,GFXtestMenu3,GFXtestMenu4,0
 GFXtestMenuCode:
-	dc.l	GFXTestScreen,GFXtest320x200,MainMenu,0	
+	dc.l	GFXTestScreen,GFXtest320x200,GFXTestScroll,MainMenu,0	
 GFXtestMenuKey:
-	dc.b	"1","2","9",0
+	dc.b	"1","2","3","9",0
 GFXtestText:
 	dc.b	2,"Graphicstests",$a,$a,0
 GFXtestMenu1:
@@ -12526,6 +13631,8 @@ GFXtestMenu1:
 GFXtestMenu2:
 	dc.b	"2 - Testscreen 320x200",0
 GFXtestMenu3:
+	dc.b	"3 - Test Scroll",0
+GFXtestMenu4:
 	dc.b	"9 - Exit to mainmenu",0
 GFXtestNoSerial:
 	dc.b	$a,$d,$a,$d,"GRAPHICTEST IN ACTION, Serialoutput is not possible during test",$a,$d,$a,$d,0
@@ -12738,6 +13845,8 @@ AutoConfAssignTo:
 AutoConfToomuchTxt:
 	dc.b	$a,"  ** ERRROR, looping autoconfig detected. (BUG!) exiting",$a,$a,0
 	EVEN
+SectorErrorTxt:
+	dc.b	2,"Error finding sector possibly readerror",$a,$a,0
 
 
 S8MB:
@@ -13363,6 +14472,37 @@ CurSubY:
 	dc.w	0
 temp:	dc.l	0,0,0,0,0,0,0,0,0,0	; 10 longwords reserved for temporary crapdata
 nomem:	dc.l	0
+DriveTestVar:
+	dc.w	0
+	dc.l	0
+	dc.w	0
+	dc.l	0
+	dc.l	0
+
+DriveNo:
+	dc.w	0	; Drivenumber to test
+DriveOK:	
+	dc.w	0	; Status of drive, 0=not ok, 1=OK
+DriveMotor:
+	dc.b	0	; 0 = Diskdrivemotor is OFF
+SideNo:
+	dc.b	9	; Side of disk.  0=Upper
+TrackNo:
+	dc.b	0	; Current tracknumber
+WantedTrackNo:
+	dc.b	0	; Wanted tracknumber
+oldbfe001:
+	dc.b	0	; Contains old value of bfe001
+oldbfd100:
+	dc.b	0	; Contains old value of bfd100
+sector:
+	dc.b	0	; Currend sector
+	EVEN
+trackbuff:
+	dc.l	0	; Address to trackbuffer
+sectorbuff:
+	dc.l	0,0,0,0	; a small part of MFMdecoded sectordata.
+
 AudSimpVar:		; Variablelist for the menusystem
 	dc.w	0
 	dc.l	0
@@ -13605,6 +14745,10 @@ MenuCopper:
 	EVEN
 ECSCopper:
 	blk.b	EndRomEcsCopper-RomEcsCopper,0
+ECSCopper2
+	blk.b	EndRomEcsCopper-RomEcsCopper,0
+JunkBuffer:
+	blk.l	54,0			; Junkbuffer for 256 bytes
 
 	; Put this data at the end of everything.
 
@@ -13704,4 +14848,3 @@ graph:
 	even
 SLASK:
 	dc.l	0
-
