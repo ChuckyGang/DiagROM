@@ -16,3 +16,13 @@ MenuCode:
 
 MenuKeys:
 	one char telling what key to press to activate menuitem
+
+
+IF doing a submenusystem, for handling variables etc after menuitems. Wite a pointer to where menu is located at "Menu-V(a6)"
+at MenuVariable-V(a6) you store your pointer to where your variables is.
+structure looks like: 
+Word:  Color of string
+Longword: Pointer to string to show after menuitem.
+one per item.. if null is detected, no more variables will be printed.
+you need to in your code jump to PrintMenu, then GetInput and handle the results yourself. check the "AudioSimple" for examplecode
+"GetInput" will handle cursorkeys etc.. 
