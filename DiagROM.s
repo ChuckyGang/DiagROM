@@ -1,4 +1,4 @@
-;APS0000003200000032000253A600025D5700025D5700025D5700025D5700025D5700025D5700025D57
+;APS000000310000003100025A5C0002640D0002640D0002640D0002640D0002640D0002640D0002640D
 ;
 ; DiagROM by John "Chucky" Hertell
 ;
@@ -8,8 +8,6 @@
 
 ; obscene words like "kuk" marks really bad code or temporary crap.. just look away.
 
-
-	
 VER:	MACRO
 	dc.b "1"			; Versionnumber
 	ENDM
@@ -91,6 +89,43 @@ HIRESSize:	equ	80*512
 						; If we are in ROM Mode and start.
 						; just save the file to disk.
 	ifne	amiga
+
+						; First lets fix some checksums
+	
+	move.l	#Checksums-rom_base,d0
+	lea	a,a0
+	move.l	a0,a1
+	add.l	d0,a1				; a1 should now point to where checksums starts in memory
+	move.l	a1,d1				; Store startaddress of checksums in d1
+	move.l	d1,d2
+	add.l	#EndChecksums-Checksums,d2	; Store endaddress of checksums in d2
+	
+	clr.l	d3
+	
+	move.l	#7,d6
+
+.romcheckloop2:
+	move.l	#0,d0				; Clear D0 that calculates the checksum
+	move.l	#$3fff,d7
+.romcheckloop:
+	cmp.l	d1,a0
+	bhi	.higher
+	bra	.not
+.higher:					; ok we are above checksums.
+	cmp.l	d2,a0				; are we lower then end of checksums
+	bhi	.not				; no. so we will do checksumcalculations
+	add.l	#1,d3
+	add.l	#4,a0
+	bra	.nocalc
+.not:
+
+	add.l	(a0)+,d0
+.nocalc:
+	dbf	d7,.romcheckloop
+.endromcheck:
+	move.l	d0,(a1)+
+	dbf	d6,.romcheckloop2
+.slut:						; Checksums is calculated and put into code.
 SaveFile:
 	lea	.filnamn,a5
 	move.l	$4,a6
@@ -129,7 +164,7 @@ SaveFile:
 Dos:
 	dc.b	"dos.library",0
 
-a:	equ $180000		; YES! this is as dirty as yesterdays underwear, but needed..  do not do this if you care about other running stuff.. OK?
+a:	equ $100000		; YES! this is as dirty as yesterdays underwear, but needed..  do not do this if you care about other running stuff.. OK?
 
 		ifeq	a1k
 b:	equ a+512*1024
@@ -771,7 +806,7 @@ POSTDetectChipmem:
 	cmp.l	#"24BT",$700		; IF memory is readable at $700 instead. we are using a cpu with 24 bit adress. no memory to detect in next routines
 	beq	.a1200done
 
-	move.l	#$4000000,a1		; Detect motherboardmem on A3000/4000
+	move.l	#$1000000,a1		; Detect motherboardmem on A3000/4000
 	move.l	#$7ffffff,a2
 	lea	.a3k4kdone,a3
 	bra	DetectMBFastmem
@@ -1330,6 +1365,51 @@ code:
 	lea	NoDrawTxt,a0
 	bsr	SendSerial
 .Chip:
+
+	lea	RomCheckTxt,a0
+	move.l	#3,d1
+	bsr	Print
+
+	lea	Checksums,a1			; Load a1 with list of checksums
+	lea	rom_base,a5
+
+	move.l	#Checksums,d2			; store Checksumaddre in d1
+	move.l	#EndChecksums,d3		; store end of Checksumaddr in d2
+	move.l	#7,d6
+	move.l	#10,$404
+.romcheckloop2:
+	move.l	#0,d0				; Clear D0 that calculates the checksum
+	move.l	#$3fff,d7
+.romcheckloop:
+						; lets skip checksumcalc if we are in checksumvar area
+	cmp.l	d2,a5
+	bhi	.higher
+	bra	.not
+.higher:
+	cmp.l	d3,a5
+	bhi	.not
+	move.w	#$fff,$dff180
+	add.l	#1,$404
+						; ok we are in address of checksums. skip calc
+	add.l	#4,a5
+	bra	.nocalc
+.not:
+	add.l	(a5)+,d0
+.nocalc
+	dbf	d7,.romcheckloop
+.endromcheck:
+	cmp.l	(a1)+,d0			; Check if it fits stored checksum
+	bne	.nocheckok
+	move.l	#2,d1
+	bra	.checkok
+.nocheckok:
+	move.l	#1,d1
+.checkok:
+	bsr	binhex
+	bsr	Print
+	lea	SpaceTxt,a0
+	bsr	Print
+	dbf	d6,.romcheckloop2
 
 	lea	InitSerial2,a0
 	move.l	#7,d1
@@ -5368,7 +5448,7 @@ CheckDetectedMBMem:
 	clr.b	temp-V(a6)				; Clear tempvariable
 	clr.l	FirstMBMem-V(a6)
 	clr.l	MBMemSize-V(a6)
-	lea	$4000000,a0
+	lea	$1000000,a0
 	lea	$8000000,a1
 	bsr	DetectMem
 
@@ -5440,7 +5520,7 @@ CheckDetectedMBMem:
 	clr.l	FirstMBMem-V(a6)
 	clr.l	MBMemSize-V(a6)
 
-	lea	$40000000,a0
+	lea	$10000000,a0
 	lea	$80000000,a1
 	bsr	DetectMem
 
@@ -5559,7 +5639,7 @@ CheckExtendedMBMem:
 	move.l	#2,d1
 	bsr	Print
 
-	move.l	#$4000000,d0
+	move.l	#$1000000,d0
 	move.l	#$fffffff,d1
 
 	move.l	#1,d2
@@ -13128,6 +13208,10 @@ InitSerial2:
 EndSerial:
 	dc.b	27,"[0m",$a,$d,"No key pressed, disabling any serialcommunications. Enable it in program",$a,$d,0
 
+RomCheckTxt:
+	dc.b	$a,$a,"Doing ROM Checksumtest: (64K blocks, Green OK, Red Failed)",$a,0
+
+
 Ansi:
 	dc.b	27,"[",0
 AnsiNull:
@@ -14187,7 +14271,12 @@ TestPic:
 	incbin	"DiagRom/TestPIC.raw"
 EndTestPic:
 	endc
-	EVEN
+	dc.b	"Checksums:"
+	CNOP	0,4			; Start at even LONGWORD
+Checksums:		; Numbers here fits my Kickstart 3.1 rom.
+	dc.l	$88ff8999,$27445220,$bf491a45,$f83fe9c5,$1e97ca1e,$7f55b19b,$924d1d33,$67f7f730
+EndChecksums:
+
 EndMusic:
 	dc.b	"This is the brutal end of this ROM, everything after this are just pure noise.    End of Code...",0
 
@@ -14820,8 +14909,6 @@ ptplay:
 	EVEN
 
 
-	dc.b	"This is the brutal end of this ROM, everything after this are just pure noise.    End of Code...",0
-	EVEN
 EndData:
 	dc.l	0
 
