@@ -1,4 +1,4 @@
-;APS000000310000003100025A5C0002640D0002640D0002640D0002640D0002640D0002640D0002640D
+;APS000000310000003100027CDB0002868C0002868C0002868C0002868C0002868C0002868C0002868C
 ;
 ; DiagROM by John "Chucky" Hertell
 ;
@@ -48,7 +48,6 @@ rom_base:	equ $f80000		; Originate as if data is in ROM
 
 ; Then some different modes for the assembler
 
-
 rommode =	1				; Set to 1 if to assemble as being in ROM
 a1k =		0				; Set to 1 if to assemble as for being used on A1000 (64k memrestriction)
 debug = 	0				; Set to 1 to enable some debugshit in code
@@ -91,7 +90,6 @@ HIRESSize:	equ	80*512
 	ifne	amiga
 
 						; First lets fix some checksums
-	
 	move.l	#Checksums-rom_base,d0
 	lea	a,a0
 	move.l	a0,a1
@@ -317,13 +315,13 @@ Begin:
 	
 	move.l	#"<",d2
 	lea	.looptst1,a0
-	bra	Loopbacktest
+	bsr	Loopbacktest
 .looptst1:
 	move.w	#$777,$dff180		; Set screen to light grey
 	TOGGLEPWRLED
 	move.l	#">",d2
 	lea	.looptst2,a0
-	bra	Loopbacktest
+	jmp	Loopbacktest
 .looptst2:
 	move.w	#$555,$dff180		; Set screen to light grey
 	TOGGLEPWRLED
@@ -1365,51 +1363,20 @@ code:
 	lea	NoDrawTxt,a0
 	bsr	SendSerial
 .Chip:
+	bsr	RomChecksum
 
-	lea	RomCheckTxt,a0
-	move.l	#3,d1
-	bsr	Print
+	ifne	rommode
 
-	lea	Checksums,a1			; Load a1 with list of checksums
-	lea	rom_base,a5
+		move.l	#.cpureturn,a5
+		bsr	DetectCPU
+.cpureturn:
 
-	move.l	#Checksums,d2			; store Checksumaddre in d1
-	move.l	#EndChecksums,d3		; store end of Checksumaddr in d2
-	move.l	#7,d6
-	move.l	#10,$404
-.romcheckloop2:
-	move.l	#0,d0				; Clear D0 that calculates the checksum
-	move.l	#$3fff,d7
-.romcheckloop:
-						; lets skip checksumcalc if we are in checksumvar area
-	cmp.l	d2,a5
-	bhi	.higher
-	bra	.not
-.higher:
-	cmp.l	d3,a5
-	bhi	.not
-	move.w	#$fff,$dff180
-	add.l	#1,$404
-						; ok we are in address of checksums. skip calc
-	add.l	#4,a5
-	bra	.nocalc
-.not:
-	add.l	(a5)+,d0
-.nocalc
-	dbf	d7,.romcheckloop
-.endromcheck:
-	cmp.l	(a1)+,d0			; Check if it fits stored checksum
-	bne	.nocheckok
-	move.l	#2,d1
-	bra	.checkok
-.nocheckok:
-	move.l	#1,d1
-.checkok:
-	bsr	binhex
-	bsr	Print
-	lea	SpaceTxt,a0
-	bsr	Print
-	dbf	d6,.romcheckloop2
+		bsr	PrintCPU
+		
+
+
+ 	endif
+
 
 	lea	InitSerial2,a0
 	move.l	#7,d1
@@ -1474,7 +1441,6 @@ code:
 
 
 MainLoop:
-
 	move.l	#0,a0
 	bsr	PrintMenu			; Print or update the menu
 
@@ -1567,6 +1533,56 @@ Exit:
 	rts
 		endc
 	rts
+
+
+	
+RomChecksum:
+	lea	RomCheckTxt,a0
+	move.l	#3,d1
+	bsr	Print
+
+	lea	Checksums,a1			; Load a1 with list of checksums
+	lea	rom_base,a5
+
+	move.l	#Checksums,d2			; store Checksumaddre in d1
+	move.l	#EndChecksums,d3		; store end of Checksumaddr in d2
+	move.l	#7,d6
+	move.l	#10,$404
+.romcheckloop2:
+	move.l	#0,d0				; Clear D0 that calculates the checksum
+	move.l	#$3fff,d7
+.romcheckloop:
+						; lets skip checksumcalc if we are in checksumvar area
+	cmp.l	d2,a5
+	bhi	.higher
+	bra	.not
+.higher:
+	cmp.l	d3,a5
+	bhi	.not
+	move.w	#$fff,$dff180
+	add.l	#1,$404
+						; ok we are in address of checksums. skip calc
+	add.l	#4,a5
+	bra	.nocalc
+.not:
+	add.l	(a5)+,d0
+.nocalc
+	dbf	d7,.romcheckloop
+.endromcheck:
+	cmp.l	(a1)+,d0			; Check if it fits stored checksum
+	bne	.nocheckok
+	move.l	#2,d1
+	bra	.checkok
+.nocheckok:
+	move.l	#1,d1
+.checkok:
+	bsr	binhex
+	bsr	Print
+	lea	SpaceTxt,a0
+	bsr	Print
+	dbf	d6,.romcheckloop2
+	rts
+
 
 SetMenuCopper:
 	lea	InitCOP1LCH,a0
@@ -3530,11 +3546,16 @@ UpdateStatus:
 	move.l	#25,d0				; Print CPU type
 	move.l	#31,d1
 	bsr	SetPos
-	lea	CPU,a0
+
+	move.l	CPUPointer-V(a6),a0
 	move.l	#7,d1
 	bsr	Print
 
-	move.l	#39,d0				; Print Chipmem
+;	move.l	CPUPointer-V(a6),a0
+;	move.l	#2,d1
+;	bsr	Print
+
+	move.l	#40,d0				; Print Chipmem
 	move.l	#31,d1
 	bsr	SetPos
 	move.l	TotalChip-V(a6),d0
@@ -3543,14 +3564,14 @@ UpdateStatus:
 	bsr	Print
 	lea	KB,a0
 	bsr	Print
-	move.l	#56,d0
+	move.l	#57,d0
 	move.l	#31,d1
 	bsr	SetPos
 	move.l	#7,d1
 	move.l	TotalFast-V(a6),d0
 	bsr	bindec
 	bsr	Print
-	move.l	#69,d0
+	move.l	#70,d0
 	move.l	#31,d1
 	bsr	SetPos
 	move.l	a6,d0
@@ -3589,6 +3610,117 @@ InitScreen:
 	clr.l	d1
 	bsr	SetPos
 	rts
+
+DumpClearSerial:				; Just read serialport, to empty it, this is pre-memory, so no return.
+						; a0 contains jumpaddress where to go after exiting
+	move.l	#1,d6				; load d6 with 1, so we run this, twice to be sure serialbuffer is cleared
+.loop:
+	move.w	#$4000,$dff09a
+	move.w	#373,$dff032			; Set the speed of the serialport (9600BPS)
+	move.b	#$4f,$bfd000			; Set DTR high
+	move.w	#$0801,$dff09a
+	move.w	#$0801,$dff09c
+
+	move.l	#10000,d7
+.timeoutloop2
+	move.b	$bfe001,d0			;nonsenseread
+	cmp.l	#0,d7
+	beq	.exitloop
+	sub.l	#1,d7
+	move.w	$dff018,d0
+	btst	#14,d0				; Buffer full, we have a new char
+	beq	.timeoutloop2
+.exitloop:
+	dbf	d6,.loop
+	jmp	(a0)				; Jump to a0
+
+
+
+DumpSerial:				; This is only for PRE-Memory usage. Dumps a string to serialport.
+					; IN:
+					; a0 = String to put out on serial port.
+					; a1 = where to jump after code is run. Remember we have NO stack
+					; meaning that there is no place to store returnadresses for bsr/jsr
+
+
+	move.l	a4,d7				; Copy the value in A4 (temporary data of mousebutttons pressed) to d7
+	btst	#1,d7				; check if LMB on Joyport 1 was pressed. if so. skip serial output.
+	bne	.nomore				; it was pressed. skip all this
+	btst	#4,d7				; Check if we had loopback installed
+	bne	.nomore
+	move.w	#$4000,$dff09a
+	move.w	#373,$dff032			; Set the speed of the serialport (9600BPS)
+	move.b	#$4f,$bfd000			; Set DTR high
+	move.w	#$0801,$dff09a
+	move.w	#$0801,$dff09c
+
+	clr.l	d7				; Clear d0
+.loop:
+	move.b	(a0)+,d7
+	cmp.b	#0,d7				; end of string?
+	beq	.nomore				; yes
+
+	move.l	#40000,d2			; Load d2 with a timeoutvariable. only test this number of times.
+						; IF CIA for serialport is dead we will not end up in a wait-forever-loop.
+						; and as we cannot use timers. we have to do this dirty style of coding...
+.timeoutloop:	
+	move.b	$bfe001,d1			; just read crapdata, we do not care but reading from CIA is slow... for timeout stuff only
+	sub.l	#1,d2				; count down timeout value
+	cmp.l	#0,d2				; if 0, timeout.
+	beq	.endloop
+	move.w	$dff018,d1
+	btst	#13,d1				; Check TBE bit
+	beq.s	.timeoutloop
+.endloop:
+	move.w	#$0100,d1
+	move.b	d7,d1
+	move.w	d1,$dff030			; send it to serial
+	move.w	#$0001,$dff09c			; turn off the TBE bit
+
+	bra.s	.loop
+.nomore:
+	jmp	(a1)				; AS we cannot use RTS (and bsr/jsr) jump here after we are done.
+
+
+DumpSerialChar:				; This is only for PRE-Memory usage. Dumps a string to serialport.
+					; IN:
+					; a0 = pointer to char to print
+					; a1 = where to jump after code is run. Remember we have NO stack
+					; meaning that there is no place to store returnadresses for bsr/jsr
+
+	move.l	a4,d7				; Copy the value in A4 (temporary data of mousebutttons pressed) to d7
+	btst	#1,d7				; check if LMB on Joyport 1 was pressed. if so. skip serial output.
+	bne	.nomore				; it was pressed. skip all this
+	btst	#4,d7				; Check if we had loopback installed
+	bne	.nomore
+
+	move.w	#$4000,$dff09a
+	move.w	#373,$dff032			; Set the speed of the serialport (9600BPS)
+	move.b	#$4f,$bfd000			; Set DTR high
+	move.w	#$0801,$dff09a
+	move.w	#$0801,$dff09c
+
+	clr.l	d7				; Clear d0
+	move.b	(a0)+,d7
+	move.l	#10000,d2			; Load d2 with a timeoutvariable. only test this number of times.
+						; IF CIA for serialport is dead we will not end up in a wait-forever-loop.
+						; and as we cannot use timers. we have to do this dirty style of coding...
+.timeoutloop:	
+	move.b	$bfe001,d1			; just read crapdata, we do not care but reading from CIA is slow... for timeout stuff only
+	sub.l	#1,d2				; count down timeout value
+	cmp.l	#0,d2				; if 0, timeout.
+	beq	.endloop
+	move.w	$dff018,d1
+	btst	#13,d1				; Check TBE bit
+	beq.s	.timeoutloop
+.endloop:
+	move.w	#$0100,d1
+	move.b	d7,d1
+	move.w	d1,$dff030			; send it to serial
+	move.w	#$0001,$dff09c			; turn off the TBE bit
+.nomore:
+	jmp	(a1)				; AS we cannot use RTS (and bsr/jsr) jump here after we are done.
+
 
 CheckMemory:
 						; Checks memory
@@ -7598,15 +7730,261 @@ SystemInfoTest:
 	lea	Bytes,a0
 	bsr	Print
 
+	bsr	RomChecksum
+
+	lea	.CpuDone,a5
+	bsr	DetectCPU
+.CpuDone:
+	bsr	PrintCPU
 
 	bsr	WaitButton
 	bra	MainMenu
 	
 
+PrintCPU:
+						; Prints CPU Information
+	lea	CPUTxt,a0
+	move.l	#2,d1
+	bsr	Print
+
+	move.l	CPUPointer-V(a6),a0
+	move.l	#2,d1
+	bsr	Print
+
+	clr.l	d7
+	cmp.b	#5,CPUGen-V(a6)			; Check if we had 060 gen of CPU, if so, print revisionnumber
+	bne	.no060
+	move.b	CPU060Rev-V(a6),d7
+
+	lea	REVTxt,a0
+	bsr	Print
+	move.l	d7,d0
+	bsr	bindec
+	bsr	Print
+.no060:
+
+	lea	FPUTxt,a0
+	move.l	#2,d1
+	bsr	Print
+	move.l	FPUPointer-V(a6),a0
+	move.l	#2,d1
+	bsr	Print
+
+	lea	MMUTxt,a0
+	move.l	#2,d1
+	bsr	Print
+	clr.l	d0
+	move.b	MMU-V(a6),d0
+	bsr	bindec
+	bsr	Print
+
+	rts
+
 
 ;------------------------------------------------------------------------------------------
 
+DetectCPU:				; Detects CPU, FPU etc.
+					; Code more or less from romanworkshop.blutu.pl/menu/amiasm.htm
+					
+					; IB!  a5 Contains address to instruction after branch to here. so it can exit there
+					; if not correct cpu
+					
+	clr.l	PCRReg-V(a6)		; Clear PCRReg value
+	clr.b	CPU060Rev-V(a6)		; Clear 060 CPU Rev value
+	clr.b	MMU-V(a6)		; Clear the MMU Flag
 
+	moveq	#$0,d1			; Set CPU detected.  begin with "0" as 68000
+	move.l	#.notabove68k,$10	; Set illegal instruction to this
+
+	movec	VBR,d3			; Supported by 010+	dc.l	$4e7a3801		;movec VBR,d3	- move VBR to d3
+
+	moveq	#$10,d2
+	move.l	d2,a1
+	add.l	d3,a1
+	move.l	(a1),d2			; take a backup of current value
+	lea	.notabove68k,a0
+	move.l	a0,(a1)
+
+
+		moveq	#$1,d1			; Set 68010
+
+
+	moveq	#$10,d2
+	move.l	d2,a1
+	add.l	d3,a1
+	move.l	(a1),d2
+	lea	.cpu3,a0
+	move.l	a0,(a1)
+	move.l	d3,a2
+	moveq	#$2c,d3
+	add.l	d3,a2
+	move.l	(a2),d3			; Line 111 will happen when illegal instruction happens.
+
+	lea	.above010,a0
+	move.l	a0,(a2)
+	move.l	a7,a3
+
+
+	movec	CACR,d1			;dc.l	$4e7a1002		;movec CACR,d1	; 020-060?
+	moveq	#$2,d1			; Set 68020
+
+	movec	ITT0,d1			; Supported in 040-060
+	moveq	#$4,d1			; Set 68040
+	movec	pcr,d1			;dc.l	$4e7a1808		; movec pcr,dq	; Supported by 060
+	move.l	d1,PCRReg-V(a6)		; Store the value for future use
+	move.l	d1,d7
+	moveq	#$5,d1			; Set 68060
+
+					; OK We have 060, this cpu have some nice features, like the PCR register that shows its config.
+					; and we just read it.. so lets.. use it
+
+	movec	PCR,d4
+	bclr	#1,d4
+	movec	d4,PCR			; Make sure FPU is enabled
+	
+	and.l	#$0000ff00,d7
+	asr.l	#8,d7
+	move.b	d7,CPU060Rev-V(a6)	; Store the 060 Revisionnumber
+
+
+.above010:
+	move.l	d2,(a1)
+	move.l	d3,(a2)
+	move.l	a3,a7
+
+.notabove68k:
+	move.l	#BusError,$8		; This time to a routine that can present more data.
+	move.l	#IllegalError,$10
+	move.l	#UnimplInst,$2c
+
+	move.b	d1,CPUGen-V(a6)		; Store generation of CPU
+	move.b	d1,CPU-V(a6)		; Store pointer of CPU
+
+	lea	CPUString,a0
+	mulu	#7,d1			; Multiply with 7 to point at correct part of string
+	add.l	d1,a0
+	move.l	a0,CPUPointer-V(a6)
+
+	move.l	#0,d1
+	move.l	#.chkfpu,$10
+	
+	move.l	#$2c,d2
+	move.l	d2,a1
+	move.l	(a1),d2
+	lea	.nofpu,a0
+	move.l	a0,(a1)
+	move.l	a7,a2
+
+
+	cmp.b	#0,CPU-V(a6)		; Check if we had 68000
+	beq	.chkfpu			; YUP!.  we had
+
+	move.l	d2,(a1)
+	dc.l	$4e7a3801		; movec VBR,d3	(crash on 68k)
+	add.l	d3,a1
+	move.l	(a1),d2
+	move.l	a0,(a1)
+
+.chkfpu:
+	moveq	#0,d1			; NO Fpu
+	bchg	#1,$bfe001
+
+	dc.l	$f201583a		; ftst.b,d1
+	dc.w	$f327			; FSAVE
+
+
+
+	move.l	a2,d3
+	sub.l	a7,d3
+
+
+	moveq	#1,d1			; Set 68881
+	cmp.b	#$1c,d3
+	beq	.nofpu
+	moveq	#2,d1			; Set 68882
+	cmp.b	#$3c,d3
+	beq	.nofpu
+	moveq	#3,d1			; Set 68040
+	cmp.b	#4,d3
+	beq	.nofpu
+	moveq	#4,d1			; Set 68060
+
+
+	
+	move.l	d2,(a1)
+	
+
+
+.nofpu:
+	move.l	d1,FPU-V(a6)
+
+
+
+	lea	FPUString,a0
+	mulu	#6,d1
+	add.l	d1,a0
+	move.l	a0,FPUPointer-V(a6)
+
+
+	move.l	#BusError,$8		; This time to a routine that can present more data.
+	move.l	#IllegalError,$10
+	move.l	#UnimplInst,$2c
+
+
+
+.mmutest:
+	cmp.b	#0,CPUGen-V(a6)		; Check if 68000
+	beq	.nommu			; skip mmutest
+
+					; OK  CPU is detected, lets detect the FPU
+	move.l	#.test030mmu,$80
+	trap	#0
+	bra	.tested030		; We NEED to be in supervisormode for this
+.test030mmu:
+	move.l	SP,d1
+	move.l	#.no030mmu,$2c
+	move.l	#.no030mmu,$10
+	pmove.l	tc,d0
+	move.b	#1,MMU-V(a6)		; We did not have a crash, set that we got an MMU!
+	rte
+.no030mmu:
+	move.l	d1,SP
+	rte
+
+.tested030:
+
+	move.l	#.no040mmu,$10
+	move.l	#.no040mmu,$2c
+
+	movec	mmusr,d1		; on a 040, this will work if you got an MMU!
+	move.b	#2,MMU-V(a6)		; We did not have a crash, set that we got an MMU!
+
+.no040mmu:
+	move.l	#.nommu,$10
+	move.l	#.nommu,$2c
+	move.l	#.mmu060,$8		; we WILL get an BUSERROR if we do have an mmu of the next instruction so...
+
+	dc.w	$f5c8			; PLPAR A0	; gives illegal instruction if no MMU, and buserror IF MMU
+	bra	.nommu
+.mmu060:
+	move.b	#3,MMU-V(a6)		; We did not have a crash, set that we got an MMU!
+.nommu:
+
+	move.l	#BusError,$8		; This time to a routine that can present more data.
+	move.l	#IllegalError,$10
+	move.l	#UnimplInst,$2c
+
+
+	jmp	(a5)
+
+.cpu3:
+	cmp.b	#2,d1
+	bne.w	.notabove68k
+	dc.w	$f02f,$6200,$fffe	;Pmove I-PSR 
+;	pmove	I-PSR
+
+	moveq	#$3,d1			; Set 68030
+	bra	.notabove68k
 
 
 PortTestMenu:
@@ -8614,6 +8992,54 @@ GetJoy:
 ;------------------------------------------------------------------------------------------
 
 
+Loopbacktest:					; Test if we have a loopbackadapter connected.
+						; Simply by outputing the char in D2 and check if the same char comes back.
+						; if so, 1 is added to D6
+	move.w	#$4000,$dff09a
+	move.w	#373,$dff032			; Set the speed of the serialport (9600BPS)
+	move.b	#$4f,$bfd000			; Set DTR high
+	move.w	#$0801,$dff09a
+	move.w	#$0801,$dff09c
+
+	move.l	#10000,d7			; Load d7 with a timeoutvariable
+.timeoutloop:	
+	move.b	$bfe001,d1			; just read crapdata, we do not care but reading from CIA is slow... for timeout stuff only
+	sub.l	#1,d7				; count down timeout value
+	cmp.l	#0,d7				; if 0, timeout.
+	beq	.endloop
+	move.w	$dff018,d0
+	btst	#13,d0				; Check TBE bit
+	beq.s	.timeoutloop			; Loop until all is ok to send or until timeout hits
+.endloop:
+
+	move.w	#$0100,d1
+	move.b	d2,d1
+	move.w	d1,$dff030			; send it to serial
+	move.w	#$0001,$dff09c			; turn off the TBE bit
+
+
+	move.l	#10000,d7
+
+.timeoutloop2
+	move.b	$bfe001,d0			; Nonsenseread
+	cmp.l	#0,d7
+	beq	.exitloop
+	sub.l	#1,d7
+	move.w	$dff018,d0
+	btst	#14,d0				; Buffer full, we have a new char
+	beq	.timeoutloop2
+	bra	.check
+.exitloop:
+	clr.l	d0
+.check:
+	cmp.b	d0,d2				; Check if in and out was the same char
+	bne.s	.exit				; no so lets exit
+	add.b	#1,d6				; Yes, set d6 to 1
+.exit:
+	jmp	(a0)
+
+
+
 
 
 KeyBoardTest:
@@ -8923,6 +9349,7 @@ ErrorScreen:
 ;------------------------------------------------------------------------------------------
 
 Setup:
+	illegal
 	bsr	ClearScreen
 	lea	SetupTxt,a0
 	move.l	#1,d1
@@ -11094,162 +11521,7 @@ DumpHexLong:
 	jmp	(a3)
 
 
-DumpClearSerial:				; Just read serialport, to empty it, this is pre-memory, so no return.
-						; a0 contains jumpaddress where to go after exiting
-	move.l	#1,d6				; load d6 with 1, so we run this, twice to be sure serialbuffer is cleared
-.loop:
-	move.w	#$4000,$dff09a
-	move.w	#373,$dff032			; Set the speed of the serialport (9600BPS)
-	move.b	#$4f,$bfd000			; Set DTR high
-	move.w	#$0801,$dff09a
-	move.w	#$0801,$dff09c
 
-	move.l	#10000,d7
-.timeoutloop2
-	move.b	$bfe001,d0			;nonsenseread
-	cmp.l	#0,d7
-	beq	.exitloop
-	sub.l	#1,d7
-	move.w	$dff018,d0
-	btst	#14,d0				; Buffer full, we have a new char
-	beq	.timeoutloop2
-.exitloop:
-	dbf	d6,.loop
-	jmp	(a0)				; Jump to a0
-
-
-
-DumpSerial:				; This is only for PRE-Memory usage. Dumps a string to serialport.
-					; IN:
-					; a0 = String to put out on serial port.
-					; a1 = where to jump after code is run. Remember we have NO stack
-					; meaning that there is no place to store returnadresses for bsr/jsr
-
-
-	move.l	a4,d7				; Copy the value in A4 (temporary data of mousebutttons pressed) to d7
-	btst	#1,d7				; check if LMB on Joyport 1 was pressed. if so. skip serial output.
-	bne	.nomore				; it was pressed. skip all this
-	btst	#4,d7				; Check if we had loopback installed
-	bne	.nomore
-	move.w	#$4000,$dff09a
-	move.w	#373,$dff032			; Set the speed of the serialport (9600BPS)
-	move.b	#$4f,$bfd000			; Set DTR high
-	move.w	#$0801,$dff09a
-	move.w	#$0801,$dff09c
-
-	clr.l	d7				; Clear d0
-.loop:
-	move.b	(a0)+,d7
-	cmp.b	#0,d7				; end of string?
-	beq	.nomore				; yes
-
-	move.l	#40000,d2			; Load d2 with a timeoutvariable. only test this number of times.
-						; IF CIA for serialport is dead we will not end up in a wait-forever-loop.
-						; and as we cannot use timers. we have to do this dirty style of coding...
-.timeoutloop:	
-	move.b	$bfe001,d1			; just read crapdata, we do not care but reading from CIA is slow... for timeout stuff only
-	sub.l	#1,d2				; count down timeout value
-	cmp.l	#0,d2				; if 0, timeout.
-	beq	.endloop
-	move.w	$dff018,d1
-	btst	#13,d1				; Check TBE bit
-	beq.s	.timeoutloop
-.endloop:
-	move.w	#$0100,d1
-	move.b	d7,d1
-	move.w	d1,$dff030			; send it to serial
-	move.w	#$0001,$dff09c			; turn off the TBE bit
-
-	bra.s	.loop
-.nomore:
-	jmp	(a1)				; AS we cannot use RTS (and bsr/jsr) jump here after we are done.
-
-
-DumpSerialChar:				; This is only for PRE-Memory usage. Dumps a string to serialport.
-					; IN:
-					; a0 = pointer to char to print
-					; a1 = where to jump after code is run. Remember we have NO stack
-					; meaning that there is no place to store returnadresses for bsr/jsr
-
-	move.l	a4,d7				; Copy the value in A4 (temporary data of mousebutttons pressed) to d7
-	btst	#1,d7				; check if LMB on Joyport 1 was pressed. if so. skip serial output.
-	bne	.nomore				; it was pressed. skip all this
-	btst	#4,d7				; Check if we had loopback installed
-	bne	.nomore
-
-	move.w	#$4000,$dff09a
-	move.w	#373,$dff032			; Set the speed of the serialport (9600BPS)
-	move.b	#$4f,$bfd000			; Set DTR high
-	move.w	#$0801,$dff09a
-	move.w	#$0801,$dff09c
-
-	clr.l	d7				; Clear d0
-	move.b	(a0)+,d7
-	move.l	#10000,d2			; Load d2 with a timeoutvariable. only test this number of times.
-						; IF CIA for serialport is dead we will not end up in a wait-forever-loop.
-						; and as we cannot use timers. we have to do this dirty style of coding...
-.timeoutloop:	
-	move.b	$bfe001,d1			; just read crapdata, we do not care but reading from CIA is slow... for timeout stuff only
-	sub.l	#1,d2				; count down timeout value
-	cmp.l	#0,d2				; if 0, timeout.
-	beq	.endloop
-	move.w	$dff018,d1
-	btst	#13,d1				; Check TBE bit
-	beq.s	.timeoutloop
-.endloop:
-	move.w	#$0100,d1
-	move.b	d7,d1
-	move.w	d1,$dff030			; send it to serial
-	move.w	#$0001,$dff09c			; turn off the TBE bit
-.nomore:
-	jmp	(a1)				; AS we cannot use RTS (and bsr/jsr) jump here after we are done.
-
-
-Loopbacktest:					; Test if we have a loopbackadapter connected.
-						; Simply by outputing the char in D2 and check if the same char comes back.
-						; if so, 1 is added to D6
-	move.w	#$4000,$dff09a
-	move.w	#373,$dff032			; Set the speed of the serialport (9600BPS)
-	move.b	#$4f,$bfd000			; Set DTR high
-	move.w	#$0801,$dff09a
-	move.w	#$0801,$dff09c
-
-	move.l	#10000,d7			; Load d7 with a timeoutvariable
-.timeoutloop:	
-	move.b	$bfe001,d1			; just read crapdata, we do not care but reading from CIA is slow... for timeout stuff only
-	sub.l	#1,d7				; count down timeout value
-	cmp.l	#0,d7				; if 0, timeout.
-	beq	.endloop
-	move.w	$dff018,d0
-	btst	#13,d0				; Check TBE bit
-	beq.s	.timeoutloop			; Loop until all is ok to send or until timeout hits
-.endloop:
-
-	move.w	#$0100,d1
-	move.b	d2,d1
-	move.w	d1,$dff030			; send it to serial
-	move.w	#$0001,$dff09c			; turn off the TBE bit
-
-
-	move.l	#10000,d7
-
-.timeoutloop2
-	move.b	$bfe001,d0			; Nonsenseread
-	cmp.l	#0,d7
-	beq	.exitloop
-	sub.l	#1,d7
-	move.w	$dff018,d0
-	btst	#14,d0				; Buffer full, we have a new char
-	beq	.timeoutloop2
-	bra	.check
-.exitloop:
-	clr.l	d0
-.check:
-	cmp.b	d0,d2				; Check if in and out was the same char
-	bne.s	.exit				; no so lets exit
-	add.b	#1,d6				; Yes, set d6 to 1
-.exit:
-	jmp	(a0)
 
 
 InputHexNum:					; Inputs a 32 bit hexnumber
@@ -13219,13 +13491,23 @@ AnsiNull:
 Black:
 	dc.b	27,"[30m",0
 StatusLine:
-	dc.b	"Serial: ",1,1,1,1,1," BPS - CPU: ",1,1,1,1,1," - Chip: ",1,1,1,1,1,1," - KBFast: ",1,1,1,1,1,1," Base: ",0
+	dc.b	"Serial: ",1,1,1,1,1," BPS - CPU: ",1,1,1,1,1,"  - Chip: ",1,1,1,1,1,1," - KBFast: ",1,1,1,1,1,1," Base: ",0
 Space3:
 	dc.b	"   ",0
+CPUTxt:
+	dc.b	$a,"CPU: ",0
+FPUTxt:
+	dc.b	" FPU: ",0
+MMUTxt:
+	dc.b	" MMU: ",0
+REVTxt:
+	dc.b	" Rev: ",0
 
 	EVEN
 	
-CPU:	dc.b	"680x0",0,"68010",0,"68020",0,"68030",0,"68040",0,"68060",0,"68???",0
+CPUString:	dc.b	"68000 ",0,"68010 ",0,"68020 ",0,"68030 ",0,"68040 ",0,"68060 ",0,"68???? ",0
+FPUString:	dc.b	"NONE ",0,"68881",0,"68882",0,"68040",0,"68060",0
+	EVEN
 
 Bps:
 	dc.l	BpsNone,Bps2400,Bps9600,Bps38400,Bps115200,BpsLoop
@@ -14823,6 +15105,27 @@ CIAAPRA:
 	dc.w	0
 Passno:
 	dc.l	0
+CPU:
+	dc.l	0			; Type of CPU
+CPUGen:
+	dc.l	0			; Generation of CPU
+FPU:
+	dc.l	0			; Type of FPU
+PCRReg:
+	dc.l	0			; Value of PCRReg IF 060, if not, this is 0
+CPU060Rev:
+	dc.b	0			; Revision of 060 cpu
+MMU:
+	dc.b	0			; if 0, there is no MMU
+	
+	EVEN
+CPUPointer:
+	dc.l	0			; Pointer to CPU String
+FPUPointer:
+	dc.l	0			; Pointer to FPU String
+
+	EVEN
+
 GfxTestBpl:				; Pointers to bitplanes for gfxtest
 	dc.l	0,0,0,0,0,0,0,0
 SHIT:
