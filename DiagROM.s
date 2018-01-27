@@ -1,4 +1,5 @@
-;APS000000310000003100027CDB0002868C0002868C0002868C0002868C0002868C0002868C0002868C
+;APS00000031000000310002896F00029320000293200002932000029320000293200002932000029320
+
 ;
 ; DiagROM by John "Chucky" Hertell
 ;
@@ -49,7 +50,7 @@ rom_base:	equ $f80000		; Originate as if data is in ROM
 ; Then some different modes for the assembler
 
 rommode =	1				; Set to 1 if to assemble as being in ROM
-a1k =		0				; Set to 1 if to assemble as for being used on A1000 (64k memrestriction)
+a1k =		1				; Set to 1 if to assemble as for being used on A1000 (64k memrestriction)
 debug = 	0				; Set to 1 to enable some debugshit in code
 amiga = 	1 				; Set to 1 to create an amiga header to write the ROM to disk
 
@@ -1062,6 +1063,36 @@ code:
 ; Code in NON-ROM mode
 code:
 
+
+	move.l	$8,SaveBusError		; This time to a routine that can present more data.
+	move.l	$c,SaveAddressError
+	move.l	$10,SaveIllegalError
+	move.l	$14,SaveDivByZero
+	move.l	$18,SaveChkInst
+	move.l	$1c,SaveTrapV
+	move.l	$20,SavePrivViol
+	move.l	$24,SaveTrace
+	move.l	$28,SaveUnimplInst
+	move.l	$2c,SaveUnimplInst2
+	move.l	$80,SaveTrap
+	move.l	$84,SaveTrap2
+	move.l	$88,SaveTrap3
+	move.l	$8c,SaveTrap4
+	move.l	$90,SaveTrap5
+	move.l	$94,SaveTrap6
+	move.l	$98,SaveTrap7
+	move.l	$9c,SaveTrap8
+	move.l	$a0,SaveTrap9
+	move.l	$a4,SaveTrap10
+	move.l	$a8,SaveTrap11
+	move.l	$ac,SaveTrap12
+	move.l	$b0,SaveTrap13
+	move.l	$b4,SaveTrap14
+	move.l	$b8,SaveTrap15
+	move.l	$bc,SaveTrap16
+
+
+
 	clr.b	$bfe001
 	clr.b	$bfe201
 	clr.b	$bfe001
@@ -1507,6 +1538,34 @@ Exit:
 	move.l	irq5,$74
 	move.l	irq6,$78
 	move.l	irq7,$7c
+
+	move.l	SaveBusError,$8		; This time to a routine that can present more data.
+	move.l	SaveAddressError,$c
+	move.l	SaveIllegalError,$10
+	move.l	SaveDivByZero,$14
+	move.l	SaveChkInst,$18
+	move.l	SaveTrapV,$1c
+	move.l	SavePrivViol,$20
+	move.l	SaveTrace,$24
+	move.l	SaveUnimplInst,$28
+	move.l	SaveUnimplInst2,$2c
+	move.l	SaveTrap,$80
+	move.l	SaveTrap2,$84
+	move.l	SaveTrap3,$88
+	move.l	SaveTrap4,$8c
+	move.l	SaveTrap5,$90
+	move.l	SaveTrap6,$94
+	move.l	SaveTrap7,$98
+	move.l	SaveTrap8,$9c
+	move.l	SaveTrap9,$a0
+	move.l	SaveTrap10,$a4
+	move.l	SaveTrap11,$a8
+	move.l	SaveTrap12,$ac
+	move.l	SaveTrap13,$b0
+	move.l	SaveTrap14,$b4
+	move.l	SaveTrap15,$b8
+	move.l	SaveTrap16,$bc
+
 
 	move.b	#$40,$bfe601
 	move.b	#$a0,$bfe701
@@ -7775,10 +7834,16 @@ PrintCPU:
 	bsr	Print
 	clr.l	d0
 	move.b	MMU-V(a6),d0
-	bsr	bindec
+	cmp.b	#0,d0
+	beq	.nommu
+	lea	NOTCHECKED,a0
+	bra	.mmuprint
+.nommu:
+	lea	NO,a0
+.mmuprint:
 	bsr	Print
-
 	rts
+	
 
 
 ;------------------------------------------------------------------------------------------
@@ -7788,11 +7853,17 @@ DetectCPU:				; Detects CPU, FPU etc.
 					
 					; IB!  a5 Contains address to instruction after branch to here. so it can exit there
 					; if not correct cpu
-					
+
 	clr.l	PCRReg-V(a6)		; Clear PCRReg value
 	clr.b	CPU060Rev-V(a6)		; Clear 060 CPU Rev value
 	clr.b	MMU-V(a6)		; Clear the MMU Flag
-
+	clr.b	ADR24BIT-V(a6)		; Clear the 24Bit addressmode flag
+	move.l	#0,$700			; Clear $700
+	move.l	#"24AD",$4000700	; Write "24AD" to highmem $700
+	cmp.l	#"24AD",$700		; IF memory is readable at $700 instead. we are using a cpu with 24 bit address.
+	bne	.no24bit
+	move.b	#1,ADR24BIT-V(a6)
+.no24bit:
 	moveq	#$0,d1			; Set CPU detected.  begin with "0" as 68000
 	move.l	#.notabove68k,$10	; Set illegal instruction to this
 
@@ -7806,7 +7877,7 @@ DetectCPU:				; Detects CPU, FPU etc.
 	move.l	a0,(a1)
 
 
-		moveq	#$1,d1			; Set 68010
+	moveq	#$1,d1			; Set 68010
 
 
 	moveq	#$10,d2
@@ -7853,17 +7924,11 @@ DetectCPU:				; Detects CPU, FPU etc.
 	move.l	a3,a7
 
 .notabove68k:
-	move.l	#BusError,$8		; This time to a routine that can present more data.
+	move.l	#BusError,$8
 	move.l	#IllegalError,$10
 	move.l	#UnimplInst,$2c
 
 	move.b	d1,CPUGen-V(a6)		; Store generation of CPU
-	move.b	d1,CPU-V(a6)		; Store pointer of CPU
-
-	lea	CPUString,a0
-	mulu	#7,d1			; Multiply with 7 to point at correct part of string
-	add.l	d1,a0
-	move.l	a0,CPUPointer-V(a6)
 
 	move.l	#0,d1
 	move.l	#.chkfpu,$10
@@ -7921,6 +7986,7 @@ DetectCPU:				; Detects CPU, FPU etc.
 
 
 	lea	FPUString,a0
+	move.b	d1,FPU-V(a6)
 	mulu	#6,d1
 	add.l	d1,a0
 	move.l	a0,FPUPointer-V(a6)
@@ -7933,10 +7999,12 @@ DetectCPU:				; Detects CPU, FPU etc.
 
 
 .mmutest:
+	move.b	#4,MMU-V(a6)		; Lets set a fake value of "MMU Detected"
+	bra	.nommu			; Lets skipthat MMU detection,  it is buggy
+	
 	cmp.b	#0,CPUGen-V(a6)		; Check if 68000
 	beq	.nommu			; skip mmutest
-
-					; OK  CPU is detected, lets detect the FPU
+	bra	.no040mmu				; OK  CPU is detected, lets detect the MMU		
 	move.l	#.test030mmu,$80
 	trap	#0
 	bra	.tested030		; We NEED to be in supervisormode for this
@@ -7953,27 +8021,103 @@ DetectCPU:				; Detects CPU, FPU etc.
 
 .tested030:
 
+.test040mmu:
 	move.l	#.no040mmu,$10
 	move.l	#.no040mmu,$2c
 
-	movec	mmusr,d1		; on a 040, this will work if you got an MMU!
+;	move.b	(a7),d0
+;	movec	d0,dfc
+;	move.l	(a7),a0
+;	ptestw	(a0)
+	movec	mmusr,d0
+	cmp.l	#0,d0
+	beq	.no040mmu
 	move.b	#2,MMU-V(a6)		; We did not have a crash, set that we got an MMU!
-
 .no040mmu:
+	
 	move.l	#.nommu,$10
 	move.l	#.nommu,$2c
 	move.l	#.mmu060,$8		; we WILL get an BUSERROR if we do have an mmu of the next instruction so...
 
+;	pflush d0,a0
 	dc.w	$f5c8			; PLPAR A0	; gives illegal instruction if no MMU, and buserror IF MMU
 	bra	.nommu
 .mmu060:
 	move.b	#3,MMU-V(a6)		; We did not have a crash, set that we got an MMU!
-.nommu:
 
+.nommu:
 	move.l	#BusError,$8		; This time to a routine that can present more data.
 	move.l	#IllegalError,$10
 	move.l	#UnimplInst,$2c
+	move.l	#Trap,$80		; Restored all exceptions etc touched here
 
+
+	clr.l	d1
+	move.b	CPUGen-V(a6),d1		; Get CPU Gen from memory, lets find out the real string
+
+	cmp.b	#2,d1			; Check if we have a 020
+	bne	.no020
+	cmp.b	#0,ADR24BIT-V(a6)	; check if we have 24bit adr mode
+	beq	.full020
+	move.b	#2,d1			; Set 68EC20
+	bra	.cpudone
+.full020:
+	move.b	#3,d1			; Set 68020
+	bra	.cpudone
+.no020:
+	cmp.b	#3,d1			; Check if we have a 030
+	bne	.no030
+
+	cmp.b	#0,MMU-V(a6)		; Check if we have a MMU
+	bne	.full030
+	move.b	#4,d1			; Set 68EC30
+	bra	.cpudone	
+.full030:
+	move.b	#5,d1			; Set 68030
+	bra	.cpudone
+
+.no030:
+	cmp.b	#4,d1			; Check if we have a 040
+	bne	.no040
+
+	cmp.b	#0,MMU-V(a6)		; Check if we have a MMU
+	bne	.mmu040
+	move.b	#6,d1			; no mmu, so no FPu so set 68EC40
+	bra	.cpudone
+
+.mmu040:
+	cmp.b	#0,FPU-V(a6)		; Check if we have a FPU
+	bne	.full040
+	move.b	#7,d1			; Set 68LC40
+	bra	.cpudone
+.full040:
+	move.b	#8,d1			; Set 68040
+	bra	.cpudone
+.no040:
+	cmp.b	#5,d1			; Check if we have a 060
+	bne	.no060
+	cmp.b	#0,MMU-V(a6)
+	bne	.mmu060yes
+	move.b	#9,d1			; no mmu no fpu so set 68EC60
+	bra	.cpudone
+.mmu060yes:
+	cmp.b	#0,FPU-V(a6)
+	bne	.full060
+	move.b	#10,d1			; Set 68LC60
+	bra	.cpudone
+.full060:
+	move.b	#11,d1			; set 68060
+	bra	.cpudone
+
+.no060:					;DQFUQ?  ok something went nuts we did not have ANY CPU?
+	move.b	#12,d1			;So set 68???
+
+.cpudone:
+	move.b	d1,CPU-V(a6)		; Store CPU model
+	lea	CPUString,a0
+	mulu	#7,d1			; Multiply with 7 to point at correct part of string
+	add.l	d1,a0
+	move.l	a0,CPUPointer-V(a6)
 
 	jmp	(a5)
 
@@ -7981,7 +8125,6 @@ DetectCPU:				; Detects CPU, FPU etc.
 	cmp.b	#2,d1
 	bne.w	.notabove68k
 	dc.w	$f02f,$6200,$fffe	;Pmove I-PSR 
-;	pmove	I-PSR
 
 	moveq	#$3,d1			; Set 68030
 	bra	.notabove68k
@@ -13505,7 +13648,7 @@ REVTxt:
 
 	EVEN
 	
-CPUString:	dc.b	"68000 ",0,"68010 ",0,"68020 ",0,"68030 ",0,"68040 ",0,"68060 ",0,"68???? ",0
+CPUString:	dc.b	"68000 ",0,"68010 ",0,"68EC20",0,"68020 ",0,"68EC30",0,"68030 ",0,"68EC40",0,"68LC40",0,"68040 ",0,"68EC60",0,"68LC60",0,"68060 ",0,"68???? ",0
 FPUString:	dc.b	"NONE ",0,"68881",0,"68882",0,"68040",0,"68060",0
 	EVEN
 
@@ -13558,6 +13701,8 @@ NoLoopback:
 	dc.b	" NOT DETECTED",$a,$d,0
 CANCELED:
 	dc.b	"CANCELED",0
+NOTCHECKED:
+	dc.b	"NOT CHECKED",0
 II:
 	dc.b	" II",0
 III:
@@ -13628,12 +13773,12 @@ MenuKeys:
 	dc.l	MainMenuKey,0,AudioMenuKey,MemtestMenuKey,IRQCIAtestMenuKey,GFXtestMenuKey,PortTestMenuKey,OtherTestKey,DiskTestMenuKey,0,0
 
 MainMenuText:
-	dc.b	"                    DiagROM "
+	dc.b	"                              DiagROM "
 		ifne	a1k
 		dc.b	"A1000 "
 		endc
 	VERSION
-	dc.b	" - Amiga32 Edition"," - "
+	dc.b	" - "
 	incbin	"ram:BootDate.txt"
 	dc.b	$a
 	dc.b	"                        By John (Chucky / The Gang) Hertell",$a,$a
@@ -15117,7 +15262,8 @@ CPU060Rev:
 	dc.b	0			; Revision of 060 cpu
 MMU:
 	dc.b	0			; if 0, there is no MMU
-	
+ADR24BIT:
+	dc.b	0			; if 0 no 24 bit address cpu.
 	EVEN
 CPUPointer:
 	dc.l	0			; Pointer to CPU String
@@ -15231,6 +15377,60 @@ irq4:	dc.l	0
 irq5:	dc.l	0
 irq6:	dc.l	0
 irq7:	dc.l	0
+
+SaveBusError:
+	dc.l	0
+SaveAddressError:
+	dc.l	0
+SaveIllegalError:
+	dc.l	0
+SaveDivByZero:
+	dc.l	0
+SaveChkInst:
+	dc.l	0
+SaveTrapV:
+	dc.l	0
+SavePrivViol:
+	dc.l	0
+SaveTrace:
+	dc.l	0
+SaveUnimplInst:
+	dc.l	0
+SaveUnimplInst2:
+	dc.l	0
+SaveTrap:
+	dc.l	0
+SaveTrap2:
+	dc.l	0
+SaveTrap3:
+	dc.l	0
+SaveTrap4:
+	dc.l	0
+SaveTrap5:
+	dc.l	0
+SaveTrap6:
+	dc.l	0
+SaveTrap7:
+	dc.l	0
+SaveTrap8:
+	dc.l	0
+SaveTrap9:
+	dc.l	0
+SaveTrap10:
+	dc.l	0
+SaveTrap11:
+	dc.l	0
+SaveTrap12:
+	dc.l	0
+SaveTrap13:
+	dc.l	0
+SaveTrap14:
+	dc.l	0
+SaveTrap15:
+	dc.l	0
+SaveTrap16:
+	dc.l	0
+
 
 
 graph:
