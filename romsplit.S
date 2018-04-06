@@ -1,4 +1,4 @@
-;APSFFD31A8FFFD31A8FFFD31A8FFFD31A8FFFD31A8FFFD31A8FFFD31A8FFFD31A8FFFD31A8F58544B15
+;APSFFD31A8FFFD31A8FFFD31A8FFFD31A8FFFD31A8FFFD31A8FFFD31A8FFFD31A8FFFD31A8F58544B4C
 
 ; Simple program
 ; loads file "DiagROM" and saves three files:
@@ -503,15 +503,15 @@ end:
 	dc.l	0
 
 Filename16:
-	dc.b	"16bit.bin",0
+	dc.b	"diagrom/16bit.bin",0
 Filename32hi:
-	dc.b	"32bitHI.bin",0
+	dc.b	"diagrom/32bitHI.bin",0
 Filename32lo:
-	dc.b	"32bitLO.bin",0
+	dc.b	"diagrom/32bitLO.bin",0
 FilenameA1kEven:
-	dc.b	"A1kEVEN.bin",0
+	dc.b	"diagrom/A1kEVEN.bin",0
 FilenameA1kOdd:
-	dc.b	"A1kODD.bin",0
+	dc.b	"diagrom/A1kODD.bin",0
 	
 
 InitTxt:
@@ -527,9 +527,9 @@ InitTxt:
 	dc.b	" A1kODD.bin - Image for ODD bytes",$a,$a,0
 
 infile:
-	dc.b	"DiagROM",0
+	dc.b	"diagrom/DiagROM",0
 infilea1k:
-	dc.b	"DiagROMA1k",0
+	dc.b	"diagrom/DiagROMA1k",0
 	
 
 outmem:
