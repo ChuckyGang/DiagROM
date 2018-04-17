@@ -1,4 +1,4 @@
-;APS000000300000003000029E3E0002A7EF0002A7EF0002A7EF0002A7EF0002A7EF0002A7EF0002A7EF
+;APS000000300000003000029E900002A8410002A8410002A8410002A8410002A8410002A8410002A841
 ;
 ; DiagROM by John "Chucky" Hertell
 ;
@@ -52,7 +52,7 @@ rom_base:	equ $f80000		; Originate as if data is in ROM
 ; Then some different modes for the assembler
 
 rommode =	1				; Set to 1 if to assemble as being in ROM
-a1k =		1				; Set to 1 if to assemble as for being used on A1000 (64k memrestriction)
+a1k =		0				; Set to 1 if to assemble as for being used on A1000 (64k memrestriction)
 debug = 	0				; Set to 1 to enable some debugshit in code
 amiga = 	1 				; Set to 1 to create an amiga header to write the ROM to disk
 
@@ -1758,6 +1758,9 @@ InitStuff:
 	add.l	#MenuCopper-V,a0
 	add.l	#MenuBplPnt-RomMenuCopper,a0
 	bsr	FixBitplane
+
+	bset	#5,SCRNMODE-V(a6)		; Set bit in SCRNMODE, to tell that we are in PAL mode
+
 	rts
 
 ClearScreen:
@@ -9784,6 +9787,15 @@ ErrorScreen:
 
 ;------------------------------------------------------------------------------------------
 
+
+SwapMode:
+	move.w	#$fff,$dff180
+	bchg	#5,SCRNMODE-V(a6)
+	clr.l	d0
+	move.b	SCRNMODE-V(a6),d0
+	move.w	d0,$dff1dc		; Set BEAMCON90
+	bra	MainMenu
+
 Setup:
 	bsr	ClearScreen
 	lea	SetupTxt,a0
@@ -10227,6 +10239,8 @@ DoAutoconfig:
 	bsr	.ReadRom
 	cmp.b	#0,AutoConfType-V(a6)	; Check type of card, if 0, no card found
 	beq	.noz2	
+
+	lea	E_EXPANSIONBASE,a0
 	bsr	.WriteByte
 	add.l	#1,d6
 	cmp.l	#32,d6			; if we hit 32 boards.. something is wrong, exit
@@ -10468,9 +10482,11 @@ DoAutoconfig:
 
 .readsetz2:
 	move.b	#0,AutoConfZorro-V(a6)
+	bra	.noz3force
 .readsetz3:
 
-
+	move.b	#1,AutoConfZorro-V(a6)
+.noz3force:
 
 	clr.l	d7			; Clear d7 to have as a variable. if changed we have extended size
 	btst	#5,er_Flags(a2)		; Check if Extended sizes will be used
@@ -10557,7 +10573,7 @@ DoAutoconfig:
 .writenoz2illegal:
 	swap	d0
 	move.b	d0,AutoConfZ2Ram-V(a6)
-	lea	E_EXPANSIONBASE,a1
+	move.l	a3,a1			; Copy backup of expansionbase to a1.
 	bra	.Write
 
 .WriteZ2noram:
@@ -10582,23 +10598,23 @@ DoAutoconfig:
 
 	swap	d0
 	move.b	d0,AutoConfZ2Ram-V(a6)
-	lea	E_EXPANSIONBASE,a1
+	move.l	a3,a1
 	bra	.Write
 
 
 .WriteZ3:
 	lea	AutoConfZ3CardTxt,a0	; We got a Z3 Card
 	clr.l	d1
-	move.w	AutoConfZ3-V(a6),d1
-	move.w	d1,AutoConfWByte-V(a6)
+	move.w	AutoConfZ3-V(a6),d1	; Get address to assign to
+	move.w	d1,AutoConfWByte-V(a6)	; Write that info to the byte to be written
 	move.l	d1,d0
 	swap	d0
-	move.l	d0,AutoConfAddr-V(a6)
+	move.l	d0,AutoConfAddr-V(a6)	; Write it to the register to keep info about adr
 	add.l	AutoConfSize-V(a6),d0
 	swap	d0
-	move.w	d0,AutoConfZ3-V(a6)
-	lea	EZ3_EXPANSIONBASE,a1
-	bra	.Write
+	move.w	d0,AutoConfZ3-V(a6)	; Set the size?
+	move.l	a3,a1
+	bra	.Write			; write the data
 
 .WriteZ2IO:
 	lea	AutoConfRomCardTxt,a0	; We got a Z2 ROM Card
@@ -10614,15 +10630,15 @@ DoAutoconfig:
 	add.l	AutoConfSize-V(a6),d0
 	swap	d0
 	move.b	d0,AutoConfZ2IO-V(a6)
-	lea	E_EXPANSIONBASE,a1
+	move.l	a3,a1
 	bra	.Write
 
 .Write:					; OK! we have a card, not Z3 or Z2io. it must be Z2 RAM!
 	cmp.b	#0,AutoConfIllegal-V(a6)	; Check if the illegalfag was set
 	bne	.WriteNoAssign			; it was not 0, so it is set, shutdown card
-	move.l	d1,d3
+	move.l	d1,d3				; Store the address into d3 as backup
 	move.l	#2,d1
-	bsr	Print
+	bsr	Print				; print the string stored in a0
 
 					; IN now:
 					; A0 = String to output
@@ -10635,29 +10651,29 @@ DoAutoconfig:
 	move.l	d0,d2			; Store size in D2
 	bsr	binhex
 	move.l	#6,d1
-	bsr	Print
+	bsr	Print			; Prints the address to write
 	lea	MinusTxt,a0
 	move.l	#3,d1
-	bsr	Print
+	bsr	Print			; Prints " - "
 
 	move.l	d2,d0			; move back size to D0
 	add.l	AutoConfSize-V(a6),d0	; Add the size, to get the endaddress
 	bsr	binhex
 	move.l	#6,d1
-	bsr	Print
+	bsr	Print			; Prints the and address
 
 	lea	NewLineTxt,a0
-	bsr	Print
+	bsr	Print			; Makes a new line
 
 	cmp.b	#0,AutoConfMode-V(a6)
-	beq	.WriteFast
+	beq	.WriteFast		; ok we are in "fast" mode.. so no verbose...
 	lea	AutoConfEnableTxt,a0
 	move.l	#2,d1
 	bsr	Print
 
 	clr.b	AutoConfExit-V(a6)	; Clear the force exitflag
 .WriteLoop:
-	bsr	GetInput	; Get inputdata
+	bsr	GetInput		; Get inputdata
 	cmp.b	#0,BUTTON-V(a6)
 	beq	.WriteLoop
 	cmp.b	#1,LMB-V(a6)
@@ -10665,14 +10681,14 @@ DoAutoconfig:
 	cmp.b	#1,RMB-V(a6)	
 	beq	.WriteNoAssign
 	move.b	GetCharData-V(a6),d7	; Get chardata
-	bclr	#5,d7		; Make it uppercase
+	bclr	#5,d7			; Make it uppercase
 	cmp.b	#"Y",d7
 	beq	.WriteFast
 	cmp.b	#"N",d7
 	beq	.WriteNoAssign
 	cmp.b	#$1b,d7
 	beq	.forceexit
-	bra	.WriteLoop
+	bra	.WriteLoop		; Simply we have now printed all data, and asked user what to do. and loop until answered.
 
 .WriteFast:
 	move.l	a1,a0			; Set correct Expansionbase
@@ -10682,32 +10698,36 @@ DoAutoconfig:
 .WriteNoAssign:
 	move.l	a1,a0			; Set correct Expansionbase
 	moveq	#ec_Shutup+ExpansionRom_SIZEOF,d0
-	bsr	.WriteCard
+	bsr	.WriteCard		; Send shutup
 	move.l	#-2,d0
 .exit:	rts
 .forceexit:
 	move.b	#1,AutoConfExit-V(a6)	; Set force exit flag
 	rts	
+
+
 .WriteCard:
 	move.l	#ec_BaseAddress+ExpansionRom_SIZEOF,d0
+
 	clr.l	d1
 	move.w	AutoConfWByte-V(a6),d1	; Get data to write
 
-	cmp.b	#0,AutoConfMode-V(a6)
-	beq	.WriteCardFast
+;	cmp.b	#0,AutoConfMode-V(a6)	; Check if we want a more verbose config-
+;	beq	.WriteCardFast		; Why the F..  did I do this?? kinda pointless..  humm
+	
 .WriteCardFast:
 	lsl.l	#2,d0			; Multiply with 4
+
 	move.l	a0,a1
 	lea.l	0(a0,d0.w),a0
 
+	cmp.b	#1,AutoConfZorro-V(a6)	; Check if the board is Z3
+	beq	.writez3
 
-	cmp.l	#EZ3_EXPANSIONBASE,a0
-	bhs.s	.writez3
-
-	move.l	d1,d0
-	lsl.b	#4,d0
+	move.l	d1,d0			; take the byte to write
+	lsl.b	#4,d0			; Split it up to nibbles
 	move.b	d0,$2(a0)
-	move.b	d1,(a0)
+	move.b	d1,(a0)			; Write the byte to the card (as 2 nibbles)
 	rts
 
 .writez3:
@@ -10717,10 +10737,15 @@ DoAutoconfig:
 	move.b	d0,$100(a0)
 	move.b	d1,(a0)
 	move.l	a1,a0
+	move.l	#$48,d0
+	lea	0(a0,d0.w),a0
+	move.b	d2,(a0)
+
+
+	move.l	a1,a0
 	move.l	#$44,d0
 	lea	0(a0,d0.w),a0
 	move.w	d2,(a0)
-
 
 .dowrite:
 	rts
@@ -10749,8 +10774,16 @@ Detectmem
 	bra	.24bit
 .no24bit:
 
+	cmp.l	#" PPC",$f00090	; Check if the string "PPC" is located in rom at this address. if so we have a BPPC
+				; that will disable the 68k cpu onboard if memory  below $40000000 is tested.
+	bne	.nobppc
+	lea	$40000000,a1
+	bra	.bppc
+	
+.nobppc:
 	lea	$1000000,a1
-	lea	$ffff0000,a4	; endaddress of this pass
+.bppc:
+	lea	$f0000000,a4	; endaddress of this pass
 	bsr	.memloop	
 .24bit:
 
@@ -10780,6 +10813,9 @@ Detectmem
 	bsr	Print
 	bra	.end
 .mem:
+	cmp.l	#0,d1		; check if size was 0, that means this memory is "illegal" and should be skipped
+	beq	.blockdone
+	
 	move.l	a0,a2		; Store address of first mem found into a2
 	move.l	d1,d2		; copy size to d2
 	
@@ -10831,7 +10867,7 @@ Detectmem
 	bsr	Print
 
 				; ok we now had the endaddress at the same register Detectmemory uses as START. so lets check if we are at end of
-
+.blockdone
 ;	add.l	#1,a1
 				; memarea and if not, just loop until we are done.
 	add.l	#64*1024,a1	; Add 16k for next block to test, just in case
@@ -10870,21 +10906,30 @@ DetectMemory:
 
 	lea	MEMCheckPattern,a3
 	move.l	(a1),d3			; Take a backup of content in memory to D3
+
 .loop:
 	cmp.l	a1,a2			; check if we tested all memory
 	blo	.wearedone		; we have, we are done!
 
 	move.l	(a3)+,d2		; Store value to test for in D2	
+
 	move.l	d2,(a1)			; Store testvalue to a1
 	nop
 	move.l	(a1),d4			; read value from a1 to d4
+
 	cmp.l	d4,d2			; Compare values
 	bne	.failed			; ok failed, no working ram here.
 	cmp.l	#0,d2			; was value 0? ok end of list
 	bne	.loop			; if not, lets do this test again
 					; we had 0, we have working RAM
 
+
+;	cmp.l	16(a1),d7			; Check if block contains what is in d7, of so.  we have a shadow
+;	beq	.shadow
+
 	move.l	a1,a5			; OK lets see if this is actual CORRECT ram and now just a shadow.
+
+
 
 	move.l	a5,(a1)			; So we store the address we found in that location.
 	move.l	#32,d6			; ok we do test 31 bits
@@ -10922,7 +10967,7 @@ DetectMemory:
 	cmp.l	#0,a0			; check if a0 was 0, if so, this is the first working address
 	bne	.wehadmem
 	move.l	a5,a0			; so a5 contained the address we found, copy it to a0
-	
+	move.l	d7,16(a1)			; ok store d7 into what a1 points to.. to say that this is a block of mem)
 
 .wehadmem:
 
@@ -10931,7 +10976,6 @@ DetectMemory:
 	bra	.next
 
 .wearedone:
-	move.w	#$fff,$dff180
 	bra	.done
 
 .shadow:
@@ -10949,7 +10993,18 @@ DetectMemory:
 
 ;	sub.l	#1,d1
 
-
+	cmp.l	(a0),d7			; ok check if first address containes a $DEAD, if so. this address is already "tagged"
+	bne	.nodead
+					; ok apparentlty we alrady detected this memoryblock (or randomdata was $DEAD)
+					; clear amount of found mem, so routine knows to ignore this
+	clr.l	d1
+	bra	.dead
+.nodead:
+	move.l	d7,(a0)			; put a $DEAD at the first found address. to mark this as already tagged
+	move.l	a0,4(a0)
+	move.l	a1,8(a0)
+	move.l	d1,12(a0)
+.dead:
 	move.l	d7,a3			; Restore jumpaddress
 	jmp	(a3)
 
@@ -14366,9 +14421,9 @@ MainMenu10:
 MainMenuItems:
 	dc.l	MainMenuText,MainMenu1,MainMenu2,MainMenu3,MainMenu4,MainMenu5,MainMenu6,MainMenu7,MainMenu8,MainMenu9,MainMenu10,0,0
 MainMenuCode:
-	dc.l	SystemInfoTest,AudioMenu,MemtestMenu,IRQCIAtestMenu,GFXtestMenu,PortTestMenu,DiskTest,KeyBoardTest,OtherTest,Setup
+	dc.l	SystemInfoTest,AudioMenu,MemtestMenu,IRQCIAtestMenu,GFXtestMenu,PortTestMenu,DiskTest,KeyBoardTest,OtherTest,Setup,SwapMode
 MainMenuKey:	; Keys needed to choose menu. first byte keykode 2:nd byte serialcode.
-	dc.b	"0","1","2","3","4","5","6","7","8","s",0
+	dc.b	"0","1","2","3","4","5","6","7","8","s"," ",0
 NotImplTxt:
 	dc.b	2,"This function is not implemented yet. Anyday.. soon(tm), Thursday?",$a,$a,0
 NotA1kTxt:
@@ -14646,7 +14701,7 @@ CIATestTxt:
 CIATestTxt2:
 	dc.b	2,"Press any key to start tests (2 sec/each), Press ESC for mainmenu",$a,$a,$a,0
 CIATestTxt3:
-	dc.b	2,"Flashing on screen is fully normal, indicating CIA timing",$a,$a
+	dc.b	2,"Flashing on screen is fully normal, indicating CIA timing. NTSC Will give false data",$a,$a
 
 CIAATestAATxt:
 	dc.b	"Testing Timer A, on CIA-A (ODD) :",$a,0
@@ -15466,6 +15521,8 @@ OVLErr:
 	dc.b	0	; Store if we had OVL Error
 RASTER:
 	dc.b	0	; if not 0, We have detected working raster
+SCRNMODE:
+	dc.b	0	; If 0, we are in PAL (50Hz) screenmode, any other we have NTSC (60Hz)
 SerData:
 	dc.b	0	; if 0  we had no serialdata
 Serial:
