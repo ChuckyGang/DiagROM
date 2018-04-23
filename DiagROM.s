@@ -1,4 +1,4 @@
-;APS000000300000003000029E900002A8410002A8410002A8410002A8410002A8410002A8410002A841
+;APS000000300000003000029F210002A8D20002A8D20002A8D20002A8D20002A8D20002A8D20002A8D2
 ;
 ; DiagROM by John "Chucky" Hertell
 ;
@@ -2742,6 +2742,16 @@ PutChar:
 	move.b	d0,$dff181
 	bra	.exitwithserial
 
+SameRow:
+						; Changes so we print on the same row. just clears the X column
+	PUSH
+	clr.b	Xpos-V(a6)
+	move.b	#$d,d0
+	bsr	rs232_out
+	POP
+	rts
+
+
 PrintChar:					; Puts a char on screen and add X, Y variables depending on char etc.
 						; INDATA: (Longwords expected)
 						;	D0 = Char
@@ -2978,7 +2988,7 @@ ScrollScreen:
 	move.l	640(a2),(a2)+	
 	dbf	d0,.loop
 
-	move.w	#140,d0
+	move.w	#142,d0
 .loop2:
 	clr.l	(a0)+
 	clr.l	(a1)+
@@ -9809,6 +9819,59 @@ Setup:
 
 ;------------------------------------------------------------------------------------------
 
+WaitShort:					; Wait a short time, aprox 10 rasterlines. (or exact IF we have detected working raster)
+	PUSH
+	cmp.b	#1,RASTER-V(a6)			; Check if we have a confirmed working raster
+	beq	.raster
+	move.l	#$1000,d0			; if now.  lets try to wait some anyway.
+	bsr	ReadSerial			; as we have no IRQs..  read serialport just in case
+.loop:
+	move.b	$bfe001,d1			; Dummyread from slow memory
+	move.b	$dff006,d1
+	dbf	d0,.loop
+	POP
+	rts
+.raster:
+	bsr	ReadSerial			; as we have no IRQs..  read serialport just in case
+	move.b	$dff006,d0			; Get what rasterline we are at now
+	add.b	#10,d0				; Add 10
+.rasterloop:
+	cmp.b	$dff006,d0
+	bne.s	 .rasterloop
+	POP
+	rts
+
+
+WaitLong:					; Wait a short time, aprox 10 rasterlines. (or exact IF we have detected working raster)
+	PUSH
+	cmp.b	#1,RASTER-V(a6)			; Check if we have a confirmed working raster
+	beq	.raster
+	move.w	#3,d1
+	bsr	ReadSerial			; as we have no IRQs..  read serialport just in case
+.loop2
+	move.l	#$ffff,d0			; if now.  lets try to wait some anyway.
+.loop:
+	move.b	$bfe001,d2			; Dummyread from slow memory
+	move.b	$dff006,d2
+	dbf	d0,.loop
+	dbf	d1,.loop2
+	POP
+	rts
+
+.raster:
+	cmp.b	#$90,$dff006
+	bne.s	.raster				; Wait for rasterline $90
+
+	bsr	ReadSerial			; as we have no IRQs..  read serialport just in case
+
+.rasterloop:
+	cmp.b	#$8f,$dff006
+	bne.s	 .rasterloop			; Wait for rasterline $8f, meaning we have waited for one frame
+	POP
+	rts
+
+
+
 OtherTest:
 	bsr	InitScreen
 	move.w	#7,MenuNumber-V(a6)
@@ -10144,6 +10207,60 @@ oki:
 	add.b	#"0",d0
 	bsr	PrintChar
 	rts
+
+DumpHexLong:
+					; Same as DumpHexByte but longword.
+					; A3 is jumppointer for exit
+	move.l	d1,d6
+	swap	d1
+	asr.l	#8,d1
+	lea	.byte1,a2
+	bra	DumpHexByte
+.byte1:
+	move.l	d6,d1
+	swap	d1
+	lea	.byte2,a2
+	bra	DumpHexByte
+.byte2:
+	move.l	d6,d1
+	asr	#8,d1
+	lea	.byte3,a2
+	bra	DumpHexByte		
+.byte3:
+	move.l	d6,d1
+	lea	.byte4,a2
+	bra	DumpHexByte
+.byte4:
+	jmp	(a3)
+
+DefaultVars:					; Set defualtvalues
+	move.l	a6,d0
+	add.l	#EndData-V,d0
+	move.l	d0,CheckMemEditScreenAdr-V(a6)
+	rts
+
+
+
+DumpHexByte:				; PRE MEM-CODE!  dumps content of BYTE in d1 to serialport-
+					; INDATA:
+					;	D1 = byte to print
+					;	A2 = address to jump after done
+
+	lea	bytehextxt,a0
+	clr.l	d2
+	move.b	d1,d2
+	asl	#1,d2
+	add.l	d2,a0
+	lea	.char1,a1
+	bra	DumpSerialChar
+.char1:
+	lea	.char2,a1
+	bra	DumpSerialChar
+.char2:
+	jmp	(a2)
+
+
+
 
 ;------------------------------------------------------------------------------------------
 
@@ -11010,6 +11127,28 @@ DetectMemory:
 
 
 
+GetHWReg:					; Dumps all readable HW registers to memory
+	move.w	$dff000,BLTDDAT-V(a6)
+	move.w	$dff002,DMACONR-V(a6)
+	move.w	$dff004,VPOSR-V(a6)
+	move.w	$dff006,VHPOSR-V(a6)
+	move.w	$dff008,DSKDATR-V(a6)
+	move.w	$dff00a,JOY0DAT-V(a6)
+	move.w	$dff00c,JOY1DAT-V(a6)
+	move.w	$dff00e,CLXDAT-V(a6)
+	move.w	$dff010,ADKCONR-V(a6)
+	move.w	$dff012,POT0DAT-V(a6)
+	move.w	$dff014,POT1DAT-V(a6)
+	move.w	$dff016,POTINP-V(a6)
+	move.w	$dff018,SERDATR-V(a6)
+	move.w	$dff01a,DSKBYTR-V(a6)
+	move.w	$dff01c,INTENAR-V(a6)
+	move.w	$dff01e,INTREQR-V(a6)
+	move.w	$dff07c,DENISEID-V(a6)
+	move.w	$dff1da,HHPOSR-V(a6)
+	rts
+
+
 
 
 
@@ -11707,7 +11846,7 @@ DiskdriveTest:
 
 
 	POP
-
+ 
 ;	cmp.b	d3,d0				; Are we on correct sector?
 ;	beq	.sectorOK			; Yes
 	move.b	d0,sector-V(a6)
@@ -11763,6 +11902,476 @@ DiskdriveTest:
 	POP
 	rts
 
+GAYLE_ADDR: 	equ	$da8000
+GAYLE_ID_ADDR:	equ	$de1000
+
+
+; Gaylecodehelp from Stephen Leary
+
+GayleTest:
+	bsr	ClearScreen
+
+	lea	GayleCheckMirrorTxt,a0
+	move.l	#6,d1
+	bsr	Print
+
+
+	lea	GAYLE_ID_ADDR,a1			; Read Gayle address
+	move.w	$dff01c,-(sp)			; Store value if intena in stack
+	move.w	#$bfff,$9a(a1)			; set all enables
+	move.w	#$3fff,d2			; also flag for no mirror
+	cmp.w	$dff01c,d2
+	bne	.nomirror
+	move.w	d2,$9a(a1)			; Clear all enables
+	tst	$dff01c
+	bne.s	.nomirror
+	moveq	#0,d2				; Mirrored
+
+	lea	GayleMirrorTxt,a0
+	move.l	#3,d1
+	bsr	Print
+
+.nomirror:
+	move.w	#$3fff,$dff09c			; Clear bits
+	ori.w	#$8000,(sp)			; add setbit
+	move.w	(sp)+,$dff09c			; Reset values
+	tst.w	d2				; Did we find mirroring
+	beq	.no_hw				; yes we did. quit
+
+	lea	GayleNoMirrorTxt,a0
+	move.l	#3,d1
+	bsr	Print
+
+	lea	GayleVerTxt,a0
+	move.l	#7,d1
+	bsr	Print
+
+
+	moveq	#0,d2
+	move.b	d2,(a1)				; Value doesnt matter, just a write needed
+
+	bsr	.get_gid_bit			; Get 4 bits
+	bsr	.get_gid_bit
+	bsr	.get_gid_bit
+	bsr	.get_gid_bit
+
+
+	move.w	d2,d0
+	bsr	binhexbyte
+	move.l	#2,d1
+	bsr	Print
+
+	lea	NewLineTxt,a0
+	bsr	Print
+
+	cmp.b	#$d,d2				; Check for version $d
+	beq.s	.GayleFound
+
+.done:
+	bsr	WaitPressed
+	bra	MainMenu
+
+.no_hw:
+	lea	GayleNoIDETxt,a0
+	move.w	#1,d1
+	bsr	Print
+	bra	.done
+
+.GayleFound:
+	lea	GayleIDETxt,a0
+	move.w	#2,d1
+	bsr	Print
+
+	bsr	.WaitRDY
+
+	lea	NewLineTxt,a0
+	bsr	Print
+
+	cmp.b	#0,d2
+	beq	.nointexit			; we had a timeout.  go to nointexit
+
+	move.b	#$ec,d0				; Read the drive ID
+	bsr	.IDECommand
+
+.BoardServer:
+	PUSH
+	lea	IDEInterruptCheck,a0
+	move.l	#3,d1
+	bsr	Print
+	POP
+
+	moveq.l	#0,d0				; Assume it is not out interrupt
+	lea	GAYLE_ADDR,a0			; Point to the board
+	move.b	$1000(a0),d1			; IntChange check for int!
+	bpl	.nointexit			; not ours
+
+	PUSH
+	lea	IDEInterruptDetected,a0
+	move.l	#3,d1
+	bsr	Print
+	POP
+
+
+	bsr	.IDECheckStatus
+
+
+						; Our interrypt, clear it
+						; must clear drive first, then gayle
+	move.l	$da0000,a2			; IDE_Slow
+	move.b	$1c(a2),d1			; AT_Status. clears interrupt (IDE)
+
+	PUSH
+	lea	IDEInterruptCleared,a0
+	move.l	#3,d1
+	bsr	Print
+	POP
+
+	bsr	.IDECheckStatus
+
+	move.w	SR,d2				; Save current SR
+	ori.w	#$700,sr			; Raise int priority to level 7
+	move.b	$1000(a0),d1			; Gayle_intchange
+
+	PUSH
+	lea	IDEInterruptChangedReading,a0
+	move.l	#3,d1
+	bsr	Print
+	POP
+
+	move.w	d1,d0
+	PUSH
+	bsr	binhex
+	move.l	#3,d1
+	bsr	Print
+	lea	NewLineTxt,a0
+	bsr	Print	
+	POP
+
+	move.b	d1,$1000(a0)			; Clear latch in gayle
+	move.w	d2,sr				; Reenable normal int level
+
+	lea	$da0000,a2			; IDE_Slow
+	bsr	.IDEReadData
+
+	move.l	DiskBuffer-V(a6),d0
+	move.l	d0,a4				; A4 now contains pointer to diskbuffer
+
+
+	lea	IDESurfacesTxt,a0
+	move.l	#3,d1
+	bsr	Print
+
+	clr.l	d0
+	move.w	$6a(a4),d0
+	bsr	bindec
+	move.l	#2,d1
+	bsr	Print
+
+	
+	lea	IDESectorsTxt,a0
+	move.l	#3,d1
+	bsr	Print
+
+	move.w	$6c(a4),d0
+	bsr	bindec
+	move.l	#2,d1
+	bsr	Print
+
+
+
+	lea	IDECylindersTxt,a0
+	move.l	#3,d1
+	bsr	Print
+
+	move.w	$68(a4),d0
+	bsr	bindec
+	move.l	#2,d1
+	bsr	Print
+
+
+	lea	IDEBlkSize,a0
+	move.l	#3,d1
+	bsr	Print
+
+	move.w	$6(a4),d0
+	bsr	bindec
+	move.l	#2,d1
+	bsr	Print
+
+	lea	NewLineTxt,a0
+	bsr	Print
+
+
+	lea	IDEUnitTxt,a0
+	move.l	#3,d1
+	bsr	Print
+
+
+	move.l	a4,a5
+	add.l	#$2d,a5				; step to unitname
+
+	move.l	#39,d7
+.unitloop:
+	clr.l	d0
+	move.b	(a5)+,d0
+	bsr	MakePrintable
+	move.l	#2,d1
+	bsr	PrintChar
+	dbf	d7,.unitloop
+
+
+	lea	NewLineTxt,a0
+	bsr	Print
+
+
+
+	bsr	.IDECheckStatus
+
+	clr.l	d0
+	move.w	$da1018,d0
+	bsr	binhexword
+	move.l	#3,d1
+	bsr	Print
+	move.l	#" ",d0
+	bsr	PrintChar
+
+	clr.l	d0
+	move.w	$da101c,d0
+	bsr	binhexword
+	move.l	#3,d1
+	bsr	Print
+	move.l	#" ",d0
+	bsr	PrintChar
+
+	clr.l	d0
+	move.w	$da0004,d0
+	bsr	binhexword
+	move.l	#3,d1
+	bsr	Print
+	move.l	#" ",d0
+	bsr	PrintChar
+
+	clr.l	d0
+	move.w	$da0008,d0
+	bsr	binhexword
+	move.l	#3,d1
+	bsr	Print
+	move.l	#" ",d0
+	bsr	PrintChar
+
+	clr.l	d0
+	move.w	$da000c,d0
+	bsr	binhexword
+	move.l	#3,d1
+	bsr	Print
+	move.l	#" ",d0
+	bsr	PrintChar
+
+	clr.l	d0
+	move.w	$da0010,d0
+	bsr	binhexword
+	move.l	#3,d1
+	bsr	Print
+	move.l	#" ",d0
+	bsr	PrintChar
+
+	clr.l	d0
+	move.w	$da0014,d0
+	bsr	binhexword
+	move.l	#3,d1
+	bsr	Print
+	move.l	#" ",d0
+	bsr	PrintChar
+
+	clr.l	d0
+	move.w	$da0018,d0
+	bsr	binhexword
+	move.l	#3,d1
+	bsr	Print
+	move.l	#" ",d0
+	bsr	PrintChar
+
+	clr.l	d0
+	move.w	$da001c,d0
+	bsr	binhexword
+	move.l	#3,d1
+	bsr	Print
+	move.l	#" ",d0
+	bsr	PrintChar
+
+
+
+
+.nointexit:
+;	PUSH
+;	lea	GayleIDERead,a0
+;	move.l	#3,d1
+;	bsr	Print
+;	POP
+
+	moveq.l	#0,d0
+	move.b	d1,d0
+	PUSH
+	bsr	binhex
+	move.l	#3,d1
+	bsr	Print
+	lea	NewLineTxt,a0
+	bsr	Print
+	POP
+.endIDTests:
+	
+
+	bra	.done
+
+
+.WaitRDY:
+	move.w	#50,d0
+	move.w	d0,GayleData-V(a6)
+	move.l	#1,d7				; retrycounter
+.loop:
+	move.w	GayleData-V(a6),d2
+	sub.w	#1,d2
+	move.w	d2,GayleData-V(a6)
+
+	PUSH
+	lea	GayleRDYTxt,a0
+	move.l	#2,d1
+	bsr	Print
+	POP
+
+
+	move.b	$da001c,d0			; Statuscommand
+	and.b	#$c1,d0
+	move.b	d0,d4
+		
+	PUSH
+	bsr	binhexbyte
+	move.w	#3,d1
+	bsr	Print
+
+	move.l	#32,d0
+	bsr	PrintChar
+	move.l	#40,d0
+	bsr	PrintChar
+
+	POP
+
+	move.w	$da001c,d0
+	PUSH
+	bsr	binhexword
+	move.l	#3,d1
+	bsr	Print
+	move.l	#41,d0
+	bsr	PrintChar
+
+	lea	TryTxt,a0
+	bsr	Print
+	move.l	d7,d0
+	bsr	bindec
+	bsr	Print
+	bsr	SameRow
+	POP	
+
+	add.l	#1,d7
+
+	move.w	GayleData-V(a6),d2
+	cmp.w	#0,d2
+	beq	.exit
+
+
+	cmp.b	#$40,d4
+	bne	.loop
+.exit:
+	rts
+
+.IDECommand:
+	move.b	d0,$da001c
+	rts
+
+.IDECheckStatus:
+	PUSH
+	lea	IDEInterruptStatusReading,a0
+	move.l	#3,d1
+	bsr	Print
+	POP
+
+	move.b	$da8000,d0
+	PUSH
+	bsr	binhex
+	move.l	#3,d1
+	bsr	Print
+	lea	NewLineTxt,a0
+	bsr	Print
+	POP
+	rts
+
+.IDEReadData:
+
+	move.l	#4096,d0
+	bsr	GetChip				; Get block of 4K
+
+	move.l	d0,DiskBuffer-V(a6)
+
+;	PUSH
+;	bsr	binhex
+;	move.l	#1,d1
+;	bsr	Print
+;	POP
+
+
+
+	move.l	d0,a4				; move memoryaddress to a4 so we can use it
+
+
+	; print about ide rea
+
+	PUSH
+	lea	GayleIDERead,a0
+	move.l	#3,d1
+	bsr	Print
+	POP
+
+
+
+	
+	move.l	#0,d3
+.loopide:
+	move.w	0(a2),d0			; AT_Data;
+
+	move.l	d0,d1
+	asr.l	#8,d1
+	asl.l	#8,d0
+	add.b	d1,d0				; now word is byteswapped
+
+
+	move.w	d0,(a4)+
+
+;	PUSH
+;	bsr	binhexword
+;	move.l	#3,d1
+;	bsr	Print
+;	move.l	#" ",d0
+;	bsr	PrintChar
+;	POP
+
+	add.l	#1,d3
+	cmp.l	#1024,d3
+	ble	.loopide
+
+	lea	Donetxt,a0
+	move.l	#3,d1
+	bsr	Print
+
+.nomem:
+	rts
+
+
+.get_gid_bit:					; Read a gary/Gayle bit
+	move.b	(a1),d0
+	lsl.b	#1,d0
+	roxl.b	#1,d2
+	rts
+
 	
 PrintYes:
 	lea	YES,a0
@@ -11777,51 +12386,6 @@ PrintNo:
 	rts
 
 ;------------------------------------------------------------------------------------------
-
-DumpHexByte:				; PRE MEM-CODE!  dumps content of BYTE in d1 to serialport-
-					; INDATA:
-					;	D1 = byte to print
-					;	A2 = address to jump after done
-
-	lea	bytehextxt,a0
-	clr.l	d2
-	move.b	d1,d2
-	asl	#1,d2
-	add.l	d2,a0
-	lea	.char1,a1
-	bra	DumpSerialChar
-.char1:
-	lea	.char2,a1
-	bra	DumpSerialChar
-.char2:
-	jmp	(a2)
-
-
-DumpHexLong:
-					; Same as DumpHexByte but longword.
-					; A3 is jumppointer for exit
-	move.l	d1,d6
-	swap	d1
-	asr.l	#8,d1
-	lea	.byte1,a2
-	bra	DumpHexByte
-.byte1:
-	move.l	d6,d1
-	swap	d1
-	lea	.byte2,a2
-	bra	DumpHexByte
-.byte2:
-	move.l	d6,d1
-	asr	#8,d1
-	lea	.byte3,a2
-	bra	DumpHexByte		
-.byte3:
-	move.l	d6,d1
-	lea	.byte4,a2
-	bra	DumpHexByte
-.byte4:
-	jmp	(a3)
-
 
 
 
@@ -12079,28 +12643,6 @@ DebugScreen:					; This dumps out registers..
 	rts
 
 
-GetHWReg:					; Dumps all readable HW registers to memory
-	move.w	$dff000,BLTDDAT-V(a6)
-	move.w	$dff002,DMACONR-V(a6)
-	move.w	$dff004,VPOSR-V(a6)
-	move.w	$dff006,VHPOSR-V(a6)
-	move.w	$dff008,DSKDATR-V(a6)
-	move.w	$dff00a,JOY0DAT-V(a6)
-	move.w	$dff00c,JOY1DAT-V(a6)
-	move.w	$dff00e,CLXDAT-V(a6)
-	move.w	$dff010,ADKCONR-V(a6)
-	move.w	$dff012,POT0DAT-V(a6)
-	move.w	$dff014,POT1DAT-V(a6)
-	move.w	$dff016,POTINP-V(a6)
-	move.w	$dff018,SERDATR-V(a6)
-	move.w	$dff01a,DSKBYTR-V(a6)
-	move.w	$dff01c,INTENAR-V(a6)
-	move.w	$dff01e,INTREQR-V(a6)
-	move.w	$dff07c,DENISEID-V(a6)
-	move.w	$dff1da,HHPOSR-V(a6)
-	rts
-
-
 DebugSerial:					; This dumps out registers..
 	PUSH
 	move.l	d0,DebD0-V(a6)			; first store everything in registers
@@ -12207,57 +12749,6 @@ DebugSerial:					; This dumps out registers..
 	bsr	ForceSer
 	lea	NewLineTxt,a0
 	
-	POP
-	rts
-
-WaitShort:					; Wait a short time, aprox 10 rasterlines. (or exact IF we have detected working raster)
-	PUSH
-	cmp.b	#1,RASTER-V(a6)			; Check if we have a confirmed working raster
-	beq	.raster
-	move.l	#$1000,d0			; if now.  lets try to wait some anyway.
-	bsr	ReadSerial			; as we have no IRQs..  read serialport just in case
-.loop:
-	move.b	$bfe001,d1			; Dummyread from slow memory
-	move.b	$dff006,d1
-	dbf	d0,.loop
-	POP
-	rts
-.raster:
-	bsr	ReadSerial			; as we have no IRQs..  read serialport just in case
-	move.b	$dff006,d0			; Get what rasterline we are at now
-	add.b	#10,d0				; Add 10
-.rasterloop:
-	cmp.b	$dff006,d0
-	bne.s	 .rasterloop
-	POP
-	rts
-
-
-WaitLong:					; Wait a short time, aprox 10 rasterlines. (or exact IF we have detected working raster)
-	PUSH
-	cmp.b	#1,RASTER-V(a6)			; Check if we have a confirmed working raster
-	beq	.raster
-	move.w	#3,d1
-	bsr	ReadSerial			; as we have no IRQs..  read serialport just in case
-.loop2
-	move.l	#$ffff,d0			; if now.  lets try to wait some anyway.
-.loop:
-	move.b	$bfe001,d2			; Dummyread from slow memory
-	move.b	$dff006,d2
-	dbf	d0,.loop
-	dbf	d1,.loop2
-	POP
-	rts
-
-.raster:
-	cmp.b	#$90,$dff006
-	bne.s	.raster				; Wait for rasterline $90
-
-	bsr	ReadSerial			; as we have no IRQs..  read serialport just in case
-
-.rasterloop:
-	cmp.b	#$8f,$dff006
-	bne.s	 .rasterloop			; Wait for rasterline $8f, meaning we have waited for one frame
 	POP
 	rts
 
@@ -12509,12 +13000,6 @@ InputHexNum:					; Inputs a 32 bit hexnumber
 
 
 
-
-DefaultVars:					; Set defualtvalues
-	move.l	a6,d0
-	add.l	#EndData-V,d0
-	move.l	d0,CheckMemEditScreenAdr-V(a6)
-	rts
 
 
 
@@ -14787,14 +15272,16 @@ DiskTestText:
 DiskTestMenu1:
 	dc.b	"1 - Diskdrivetest",0
 DiskTestMenu2:
+	dc.b	"2 - Gayletest (A600/1200 etc IDE)",0
+DiskTestMenu3:
 	dc.b	"9 - Mainmenu",0
 	EVEN
 DiskTestMenuItems:
-	dc.l	DiskTestText,DiskTestMenu1,DiskTestMenu2,0
+	dc.l	DiskTestText,DiskTestMenu1,DiskTestMenu2,DiskTestMenu3,0
 DiskTestMenuCode:
-	dc.l	DiskdriveTest,MainMenu
+	dc.l	DiskdriveTest,GayleTest,MainMenu
 DiskTestMenuKey:
-	dc.b	"1","9",0
+	dc.b	"1","2","9",0
 
 PortParTest:
 	dc.b	2,"Parallelport tests",$a,$a,0
@@ -15007,7 +15494,8 @@ S1GB:
 	dc.b	"1GB",0
 SRes:
 	dc.b	"RESERVED",0
-
+TryTxt:
+	dc.b	" Try: ",0
 	EVEN
 SizeTxtPointer:
 	dc.l	S8MB,S64k,S128k,S256k,S512k,S1MB,S2MB,S4MB
@@ -15018,7 +15506,44 @@ ExtSizeTxtPointer:
 ExtSizePointer:
 	dc.l	$1000000,$2000000,$4000000,$8000000,$10000000,$20000000,$40000000,$80000000
 
-	
+
+GayleCheckMirrorTxt:
+	dc.b	"Gayle test (built-in IDE Controller check)",$a,$d,$a,$d
+	dc.b	"Checking for a chipset mirror: ",0
+IDEInterruptCheck:
+	dc.b	"    Checking if we have a pending IDE Interrupt.",$a,$d,0
+IDEInterruptDetected:
+	dc.b	"    IDE Interrupt Detected",$a,$d,0
+IDEInterruptCleared:
+	dc.b	"    IDE Interrupt Cleared at the drive",$a,$d,0
+IDEInterruptChangedReading:
+	dc.b	"    Reading Gayle IntChanged: ",0
+IDEInterruptStatusReading:
+	dc.b	"   Reading Gayle IntStatus: ",0
+GayleMirrorTxt:
+	dc.b	"Mirror Detected",$a,$d,0
+GayleNoMirrorTxt:
+	dc.b	"Mirror Not Detected",$a,$d,0
+GayleIDETxt:
+	dc.b	"IDE Interface found (Running IDE Tests)",$a,$d,0
+GayleNoIDETxt:
+	dc.b	"NO IDE Interface found",$a,$d,0
+GayleVerTxt:
+	dc.b	"Reading gayleversion: ",0
+GayleRDYTxt:
+	dc.b	"    Waiting for Drive RDY (Mask 0xc1): ",0
+GayleIDERead:
+	dc.b	"    Reading data from drive: ",0
+IDESurfacesTxt:
+	dc.b	"Surfaces: ",0
+IDESectorsTxt:
+	dc.b	" Sectors: ",0
+IDECylindersTxt:
+	dc.b	" Cylinders: ",0
+IDEBlkSize:
+	dc.b	" Blocksize: ",0
+IDEUnitTxt:
+	dc.b	"Unitname: ",0
 DividerTxt:
 	dc.b	"--------------------------------------------------------------------------------",0
 EmptyRowTxt:
@@ -15155,7 +15680,7 @@ ShadowChiptxt:
 bytehextxt:
 	dc.b	"000102030405060708090A0B0C0D0E0F"
 	dc.b	"101112131415161718191A1B1C1D1E1F"
-l	dc.b	"202122232425262728292A2B2C2D2E2F"
+	dc.b	"202122232425262728292A2B2C2D2E2F"
 	dc.b	"303132333435363738393A3B3C3D3E3F"
 	dc.b	"404142434445464748494A4B4C4D4E4F"
 	dc.b	"505152535455565758595A5B5C5D5E5F"
@@ -15896,6 +16421,10 @@ FPUPointer:
 	dc.l	0			; Pointer to FPU String
 
 	EVEN
+GayleData:
+	dc.l	0			; Data from gayletest
+DiskBuffer:
+	dc.l	0			; Pointer to diskbuffer in disktests
 
 GfxTestBpl:				; Pointers to bitplanes for gfxtest
 	dc.l	0,0,0,0,0,0,0,0
