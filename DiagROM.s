@@ -52,7 +52,7 @@ rom_base:	equ $f80000		; Originate as if data is in ROM
 ; Then some different modes for the assembler
 
 rommode =	1				; Set to 1 if to assemble as being in ROM
-a1k =		0				; Set to 1 if to assemble as for being used on A1000 (64k memrestriction)
+a1k =		1				; Set to 1 if to assemble as for being used on A1000 (64k memrestriction)
 debug = 	0				; Set to 1 to enable some debugshit in code
 amiga = 	1 				; Set to 1 to create an amiga header to write the ROM to disk
 
@@ -10868,13 +10868,15 @@ DoAutoconfig:
 	rts
 
 
-Detectmem
+Detectmem:
 	bsr	ClearScreen
+	move.w	#"RN",DetectMemRnd-V(a6)	; "put in RN" at detectMemRnd to have some data
+	add.w	#1,DetectMemRnd+2-V(a6)		; Increase by 1 to have a number that changes every call
 	lea	Det24bittxt,a0
 	move.l	#5,d1
 	bsr	Print
 
-	lea	$c00000,a1
+	lea	$200000,a1
 	lea	$d00000,a4	; endaddress of this pass
 	bsr	.memloop	
 
@@ -10919,6 +10921,8 @@ Detectmem
 	clr.l	d1
 	move.l	a4,a2		; Set a2 to endaddress of scan
 	lea	.leadone,a3
+	move.l	DetectMemRnd-V(a6),d0	; store a "random" data in d0 for shadowcontrol
+
 	bra	DetectMemory
 
 .leadone:
@@ -11006,11 +11010,20 @@ DetectMemory:
 					; a3 Addr to jump after done (as this does not use any stack
 					; only OK registers to use as write: (d1), d2,d3,d4,d5,d6,d7, a0,a1,a2,a5
 
+
+					; D0 is a special "in" never to be modified but taken as a "random" generator for shadowcontrol
+
 					; OUT:	d1 = blocks of found mem
 					;	a0 = first usable address
 					;	a1 = last usable address
 
 
+
+	PUSH
+	move.l	#2,d1
+	bsr	binhex
+	bsr	Print
+	POP
 
 
 	move.l	a1,d7
@@ -11020,7 +11033,6 @@ DetectMemory:
 	move.l	a3,d7			; Store jumpaddress in D7
 	lea	$0,a0			; clear a0
 .Detect:
-
 	lea	MEMCheckPattern,a3
 	move.l	(a1),d3			; Take a backup of content in memory to D3
 
@@ -11032,7 +11044,20 @@ DetectMemory:
 
 	move.l	d2,(a1)			; Store testvalue to a1
 	nop
+	nop
+	nop
 	move.l	(a1),d4			; read value from a1 to d4
+	move.l	(a1),d4			; read value from a1 to d4
+	move.l	(a1),d4			; read value from a1 to d4
+	move.l	(a1),d4			; read value from a1 to d4
+	move.l	(a1),d4			; read value from a1 to d4
+	move.l	(a1),d4			; read value from a1 to d4
+	move.l	(a1),d4			; read value from a1 to d4
+	move.l	(a1),d4			; read value from a1 to d4
+	move.l	(a1),d4			; read value from a1 to d4
+	move.l	(a1),d4			; read value from a1 to d4
+					; Reading several times.  as sometimes reading once will give the correct answer on bad areas.
+					
 
 	cmp.l	d4,d2			; Compare values
 	bne	.failed			; ok failed, no working ram here.
@@ -11071,7 +11096,7 @@ DetectMemory:
 	beq	.mem
 
 					; ok we didnt have a shadow here
-					; a5 will contain address if there was detected ram					
+					; a5 will contain address if there was detected ram
 	sub.l	#1,d6
 
 	cmp.l	#4,d6
@@ -11081,14 +11106,33 @@ DetectMemory:
 	bra	.bitloop
 
 .mem:
+	move.l	d3,(a1)			; restore backup of data
+
+	cmp.l	(a1),d0			; check if value at a1 is the same as d0. this means we have a shadow on top and we have already tested
+	beq	.shadowdone			; this memory.  basically: we are done
+
+
+;	move.l	d0,(a0)			; put a note at the first found address. to mark this as already tagged
+;	move.l	a0,4(a0)
+;	move.l	a1,8(a0)
+;	move.l	d1,12(a0)
+
+
 	cmp.l	#0,a0			; check if a0 was 0, if so, this is the first working address
 	bne	.wehadmem
 	move.l	a5,a0			; so a5 contained the address we found, copy it to a0
-	move.l	d7,16(a1)			; ok store d7 into what a1 points to.. to say that this is a block of mem)
+	move.l	d7,16(a1)		; ok store d7 into what a1 points to.. to say that this is a block of mem)
+
+;	bra	.nomirror		; ok as we just set this, we for sure do not have a mirror at the beginning. so skip that test
 
 .wehadmem:
+;	cmp.l	(a1),d0			; check if value at a1 is the same as d0. this means we have a shadow on top and we have already tested
+;	beq	.done			; this memory.  basically: we are done
+;.nomirror:
 
-	move.l	d3,(a1)			; restore backup of data
+
+
+
 	add.l	#1,d1			; OK we found mem, lets add 1 do d1 (total block of known working ram)
 	bra	.next
 
@@ -11103,25 +11147,22 @@ DetectMemory:
 	bne	.done
 
 .next:
+	move.l	d0,(a1)			; put a note at the first found address. to mark this as already tagged
+;	move.l	a0,4(a1)
+;	move.l	a1,8(a1)
+;	move.l	d1,12(a1)
+
+;	move.l	#"DONE",16(a1)
+
 	add.l	#64*1024,a1		; Add 64k for next block to test
 	bra	.Detect
-	
+.shadowdone:
+	move.w	#$fff,$dff180	
 .done:
 
-;	sub.l	#1,d1
+;	clr.l	d1
 
-	cmp.l	(a0),d7			; ok check if first address containes a $DEAD, if so. this address is already "tagged"
-	bne	.nodead
-					; ok apparentlty we alrady detected this memoryblock (or randomdata was $DEAD)
-					; clear amount of found mem, so routine knows to ignore this
-	clr.l	d1
-	bra	.dead
-.nodead:
-	move.l	d7,(a0)			; put a $DEAD at the first found address. to mark this as already tagged
-	move.l	a0,4(a0)
-	move.l	a1,8(a0)
-	move.l	d1,12(a0)
-.dead:
+;.dead:
 	move.l	d7,a3			; Restore jumpaddress
 	jmp	(a3)
 
@@ -12011,11 +12052,8 @@ GayleTest:
 	bsr	Print
 	POP
 
-
 	bsr	.IDECheckStatus
-
-
-						; Our interrypt, clear it
+						; Our interrupt, clear it
 						; must clear drive first, then gayle
 	move.l	$da0000,a2			; IDE_Slow
 	move.b	$1c(a2),d1			; AT_Status. clears interrupt (IDE)
@@ -12108,9 +12146,9 @@ GayleTest:
 
 
 	move.l	a4,a5
-	add.l	#$2d,a5				; step to unitname
+	add.l	#$32,a5				; step to unitname  (2d)
 
-	move.l	#39,d7
+	move.l	#31,d7
 .unitloop:
 	clr.l	d0
 	move.b	(a5)+,d0
@@ -12118,6 +12156,23 @@ GayleTest:
 	move.l	#2,d1
 	bsr	PrintChar
 	dbf	d7,.unitloop
+
+	lea	REVTxt,a0
+	move.l	#3,d1
+	bsr	Print
+
+	move.l	a4,a5
+	add.l	#$2d,a5				; step to unitname  (2d)
+
+	move.l	#4,d7
+.unitrevloop:
+	clr.l	d0
+	move.b	(a5)+,d0
+	bsr	MakePrintable
+	move.l	#2,d1
+	bsr	PrintChar
+	dbf	d7,.unitrevloop
+
 
 
 	lea	NewLineTxt,a0
@@ -12127,97 +12182,9 @@ GayleTest:
 
 	bsr	.IDECheckStatus
 
-	clr.l	d0
-	move.w	$da1018,d0
-	bsr	binhexword
-	move.l	#3,d1
-	bsr	Print
-	move.l	#" ",d0
-	bsr	PrintChar
-
-	clr.l	d0
-	move.w	$da101c,d0
-	bsr	binhexword
-	move.l	#3,d1
-	bsr	Print
-	move.l	#" ",d0
-	bsr	PrintChar
-
-	clr.l	d0
-	move.w	$da0004,d0
-	bsr	binhexword
-	move.l	#3,d1
-	bsr	Print
-	move.l	#" ",d0
-	bsr	PrintChar
-
-	clr.l	d0
-	move.w	$da0008,d0
-	bsr	binhexword
-	move.l	#3,d1
-	bsr	Print
-	move.l	#" ",d0
-	bsr	PrintChar
-
-	clr.l	d0
-	move.w	$da000c,d0
-	bsr	binhexword
-	move.l	#3,d1
-	bsr	Print
-	move.l	#" ",d0
-	bsr	PrintChar
-
-	clr.l	d0
-	move.w	$da0010,d0
-	bsr	binhexword
-	move.l	#3,d1
-	bsr	Print
-	move.l	#" ",d0
-	bsr	PrintChar
-
-	clr.l	d0
-	move.w	$da0014,d0
-	bsr	binhexword
-	move.l	#3,d1
-	bsr	Print
-	move.l	#" ",d0
-	bsr	PrintChar
-
-	clr.l	d0
-	move.w	$da0018,d0
-	bsr	binhexword
-	move.l	#3,d1
-	bsr	Print
-	move.l	#" ",d0
-	bsr	PrintChar
-
-	clr.l	d0
-	move.w	$da001c,d0
-	bsr	binhexword
-	move.l	#3,d1
-	bsr	Print
-	move.l	#" ",d0
-	bsr	PrintChar
-
-
-
 
 .nointexit:
-;	PUSH
-;	lea	GayleIDERead,a0
-;	move.l	#3,d1
-;	bsr	Print
-;	POP
 
-	moveq.l	#0,d0
-	move.b	d1,d0
-	PUSH
-	bsr	binhex
-	move.l	#3,d1
-	bsr	Print
-	lea	NewLineTxt,a0
-	bsr	Print
-	POP
 .endIDTests:
 	
 
@@ -12312,14 +12279,6 @@ GayleTest:
 
 	move.l	d0,DiskBuffer-V(a6)
 
-;	PUSH
-;	bsr	binhex
-;	move.l	#1,d1
-;	bsr	Print
-;	POP
-
-
-
 	move.l	d0,a4				; move memoryaddress to a4 so we can use it
 
 
@@ -12330,9 +12289,6 @@ GayleTest:
 	move.l	#3,d1
 	bsr	Print
 	POP
-
-
-
 	
 	move.l	#0,d3
 .loopide:
@@ -12345,15 +12301,6 @@ GayleTest:
 
 
 	move.w	d0,(a4)+
-
-;	PUSH
-;	bsr	binhexword
-;	move.l	#3,d1
-;	bsr	Print
-;	move.l	#" ",d0
-;	bsr	PrintChar
-;	POP
-
 	add.l	#1,d3
 	cmp.l	#1024,d3
 	ble	.loopide
@@ -16255,6 +16202,8 @@ GfxChipset:
 	EVEN
 BootMBFastmem:				; Amount of motherboard fastmem detected at bootpoint
 	dc.l	0
+DetectMemRnd:
+	dc.l	0			; used as a flag to tag for shadowram
 CheckMemFrom:
 	dc.l	0			; Startaddress of memory to check
 CheckMemTo:
