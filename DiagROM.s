@@ -1,4 +1,4 @@
-;APS00000030000000300002AF070002B8B80002B8B80002B8B80002B8B80002B8B80002B8B80002B8B8
+;APS00000030000000300002B71E0002C0CF0002C0CF0002C0CF0002C0CF0002C0CF0002C0CF0002C0CF
 ;
 ; DiagROM by John "Chucky" Hertell
 ;
@@ -52,7 +52,7 @@ rom_base:	equ $f80000		; Originate as if data is in ROM
 ; Then some different modes for the assembler
 
 rommode =	1				; Set to 1 if to assemble as being in ROM
-a1k =		1				; Set to 1 if to assemble as for being used on A1000 (64k memrestriction)
+a1k =		0				; Set to 1 if to assemble as for being used on A1000 (64k memrestriction)
 debug = 	0				; Set to 1 to enable some debugshit in code
 amiga = 	1 				; Set to 1 to create an amiga header to write the ROM to disk
 
@@ -165,7 +165,7 @@ SaveFile:
 Dos:
 	dc.b	"dos.library",0
 
-a:	equ $100000		; YES! this is as dirty as yesterdays underwear, but needed..  do not do this if you care about other running stuff.. OK?
+a:	equ $45000000		; YES! this is as dirty as yesterdays underwear, but needed..  do not do this if you care about other running stuff.. OK?
 
 		ifeq	a1k
 b:	equ a+512*1024
@@ -1085,6 +1085,9 @@ POSTDetectChipmem:
 	lea	.fakefastdone,a3
 	bra	DetectMemory
 .fakefastdone:
+
+	move.w	#$aaa,$dff180		; make screen light grey
+
 	cmp.l	#0,a0			; if a0 is 0, we did not find memory
 	bne	.det50			; it wasnt, we did have memory
 					; ok we did not have memory, copy data from last detect
@@ -1367,6 +1370,9 @@ ERRORHALT2:
 .notnow:
 	bra	.endlessloop
 
+
+						; "real" code starts here.  we got detected memory etc.
+
 code:
 
 ;	move.l	a7,d3			; Copy start of chipmem (temporary stored in a7) do d3
@@ -1551,7 +1557,7 @@ code:
 	btst	#1,d7			; Check if noserial is to be set
 	beq	.notset2
 
-	move.b	#1,NoSerial-V(a6)	; set it
+;	move.b	#1,NoSerial-V(a6)	; set it
 .notset2:
 	move.b	#0,LoopB-V(a6)
 
@@ -1589,7 +1595,8 @@ code:
 
 ;---------------------------------- This is more or less where it all starts and a system is up and running
 
-;	ifeq	rommode			; if we are in rommode, then do a loopbacktest here aswell... removed due to initbug.
+	bset	#1,$bfe001
+
 
 	lea	LoopSerTest,a0
 	lea	.dirtyjump,a1		; TECHNICALLY we do not need to do this dirty thing anymore, but just to
@@ -1622,19 +1629,14 @@ code:
 
 .loopbackdone:
 
-;	endc
-
 	cmp.b	#1,NoSerial-V(a6)	; Check if noserial is set
 	beq	.noser
 	cmp.b	#1,LoopB-V(a6)		; Check if loopbackadapter was attacjhed
 	beq	.noserloop		; in that case, no serial output
 	move.w	#2,SerialSpeed-V(a6)	; KUKEN
 	bsr	Init_Serial
-
-
-	lea	DetectRasterTxt,a0
-	bsr	SendSerial
 	bra	.ser
+
 .noserloop:
 	move.w	#5,SerialSpeed-V(a6)	; Set serialspeed to 5 ,(same as 0 but mark loopbackadapter)
 	move.b	#1,NoSerial-V(a6)
@@ -1642,6 +1644,17 @@ code:
 .noser:
 	move.w	#0,SerialSpeed-V(a6)	; Set Serialspeed to 0
 .ser:
+
+
+;	lea	NoLoopback,a0
+;	lea	.kuken,a1
+;	bra	DumpSerial
+;.kuken:
+
+
+	lea	DetectRasterTxt,a0
+	bsr	SendSerial
+
 
 	move.b	$dff006,d0		; Load value of raster
 	bsr	WaitShort
@@ -1660,6 +1673,10 @@ code:
 	lea	FAILED,a0
 	bsr	SendSerial
 .rastercheckdone:
+
+
+
+
 
 	lea	NewLineTxt,a0
 	bsr	SendSerial
@@ -1700,6 +1717,7 @@ code:
 	bsr	SendSerial
 	lea	NewLineTxt,a0
 	bsr	SendSerial
+
 
 
  	PAROUT	#$f9		; Set code to $81 to paralellport, NOT ENOUGH chipmem avaible
@@ -1753,9 +1771,24 @@ code:
 		jsr	-228(a6)		;WaitBlit
 	        move.l  34(a6),ActiveView	;Store activeview for a clean exit
 	        sub.l   a1,a1
+
+
+
 	        jsr     -222(a6)        	;loadview(NULL) hell..this only works w. a6
 		jsr	-270(a6)		;WaitTOF()
 		jsr	-270(a6)		;WaitTOF()
+
+		bsr	WaitLong
+		bsr	WaitLong
+		bsr	WaitLong
+		bsr	WaitLong
+		bsr	WaitLong
+		bsr	WaitLong
+		bsr	WaitLong
+		bsr	WaitLong
+
+
+
 	        move.l  4.w,a6
 		jsr     -132(a6)        	;forbid
 		move.l	$4,a6			;exec.library
@@ -1764,6 +1797,9 @@ code:
 
 		lea	V,a6
 		move.l	d0,sysstack
+
+		
+
 	endc
 
 	cmp.b	#0,NoDraw-V(a6)
@@ -4185,11 +4221,11 @@ DumpSerialChar:				; This is only for PRE-Memory usage. Dumps a string to serial
 					; a1 = where to jump after code is run. Remember we have NO stack
 					; meaning that there is no place to store returnadresses for bsr/jsr
 
-	move.l	a4,d7				; Copy the value in A4 (temporary data of mousebutttons pressed) to d7
-	btst	#1,d7				; check if LMB on Joyport 1 was pressed. if so. skip serial output.
-	bne	.nomore				; it was pressed. skip all this
-	btst	#4,d7				; Check if we had loopback installed
-	bne	.nomore
+;	move.l	a4,d7				; Copy the value in A4 (temporary data of mousebutttons pressed) to d7
+;	btst	#1,d7				; check if LMB on Joyport 1 was pressed. if so. skip serial output.
+;	bne	.nomore				; it was pressed. skip all this
+;	btst	#4,d7				; Check if we had loopback installed
+;	bne	.nomore
 
 	move.w	#$4000,$dff09a
 	move.w	#373,$dff032			; Set the speed of the serialport (9600BPS)
@@ -4217,6 +4253,60 @@ DumpSerialChar:				; This is only for PRE-Memory usage. Dumps a string to serial
 	move.w	#$0001,$dff09c			; turn off the TBE bit
 .nomore:
 	jmp	(a1)				; AS we cannot use RTS (and bsr/jsr) jump here after we are done.
+
+
+DumpHexLong:
+					; Same as DumpHexByte but longword.
+					; A3 is jumppointer for exit
+	move.l	d1,d6
+	swap	d1
+	asr.l	#8,d1
+	lea	.byte1,a2
+	bra	DumpHexByte
+.byte1:
+	move.l	d6,d1
+	swap	d1
+	lea	.byte2,a2
+	bra	DumpHexByte
+.byte2:
+	move.l	d6,d1
+	asr	#8,d1
+	lea	.byte3,a2
+	bra	DumpHexByte		
+.byte3:
+	move.l	d6,d1
+	lea	.byte4,a2
+	bra	DumpHexByte
+.byte4:
+	jmp	(a3)
+
+DefaultVars:					; Set defualtvalues
+	move.l	a6,d0
+	add.l	#EndData-V,d0
+	move.l	d0,CheckMemEditScreenAdr-V(a6)
+	rts
+
+
+
+DumpHexByte:				; PRE MEM-CODE!  dumps content of BYTE in d1 to serialport-
+					; INDATA:
+					;	D1 = byte to print
+					;	A2 = address to jump after done
+
+	lea	bytehextxt,a0
+	clr.l	d2
+	move.b	d1,d2
+	asl	#1,d2
+	add.l	d2,a0
+	lea	.char1,a1
+	bra	DumpSerialChar
+.char1:
+	lea	.char2,a1
+	bra	DumpSerialChar
+.char2:
+	jmp	(a2)
+
+
 
 
 CheckMemory:
@@ -5041,13 +5131,64 @@ CheckMemNewRow:
 
 MemTest:
 	bsr	ClearScreen
-	lea	NotImplTxt,a0
-	move.l	#2,d1
+	clr.l	MemTestPass-V(a6)
+	
+	lea	NewLineTxt,a0
 	bsr	Print
+	lea	NewLineTxt,a0
+	bsr	Print
+	lea	NewLineTxt,a0
+	bsr	Print
+
+	lea	CheckMemRangeTxt,a0
+	move.l	#7,d1
+	bsr	Print				; Print checking memory from...
+	lea	NewLineTxt,a0
+	bsr	Print
+
+	lea	CheckMemNo,a0
+	move.l	#7,d1
+	bsr	Print				; Print checking memory from...
+
+	move.l	MemTestPass-V(a6),d0
+	bsr	bindec
+	bsr	Print
+
+	lea	NewLineTxt,a0
+	bsr	Print
+
+
+	lea	CheckMemCheckAdrTxt,a0
+	bsr	Print
+
+
+;	lea	NotImplTxt,a0
+;	move.l	#2,d1
+;	bsr	Print
+	bsr	.PrintMemRange
 	bsr	WaitPressed
 	bsr	WaitReleased
 	bra	MainMenu
 
+.PrintMemRange:
+	move.l	#21,d0
+	move.l	#3,d1
+	bsr	SetPos
+	move.l	#$13000,d0
+	bsr	binhex
+	move.l	#3,d1
+	bsr	Print
+
+
+	move.l	#34,d0
+	move.l	#3,d1
+	bsr	SetPos
+	move.l	#$23000,d0
+	bsr	binhex
+	move.l	#3,d1
+	bsr	Print
+
+	rts
 
 DetectMem:
 						; Detects memory
@@ -7655,7 +7796,7 @@ GFXTestScroll:
 	lea	TestPic,a1				; Set a1 to where testscreen is in ROM
 
 
-	move.w	#1023,d4
+	move.w	#1279,d4
 .loop2:
 	move.w	#39,d3
 .loop:
@@ -7683,7 +7824,7 @@ GFXTestScroll:
 
 .blit:
 	PUSH
-	move.w	#3,d6
+	move.w	#4,d6
 .blitloop:
 	move.w	#113,d4
 	move.l	d7,a0
@@ -7739,6 +7880,29 @@ GFXTestScroll:
 
 
 
+
+GFXTestRaster:
+	bsr	ClearScreen
+	move.l	#3,d1
+	lea	GFXtestRasterTxt,a0
+	bsr	Print
+	lea	GFXtestRasterTxt2,a0
+	bsr	Print
+
+.loopa:
+	bsr	GetInput
+	move.l	#70,d0
+	move.l	#160,d1
+.loop:
+	cmp.b	$dff006,d0
+	bne	.loop
+	add.b	#1,d0			; Wait for next rasterline
+	move.b	d0,$dff181
+	dbf	d1,.loop
+	move.w	#0,$dff180
+	cmp.b	#1,BUTTON-V(a6)
+	bne	.loopa
+	bra	GFXtestMenu
 
 
 
@@ -10470,56 +10634,6 @@ oki:
 	bsr	PrintChar
 	rts
 
-DumpHexLong:
-					; Same as DumpHexByte but longword.
-					; A3 is jumppointer for exit
-	move.l	d1,d6
-	swap	d1
-	asr.l	#8,d1
-	lea	.byte1,a2
-	bra	DumpHexByte
-.byte1:
-	move.l	d6,d1
-	swap	d1
-	lea	.byte2,a2
-	bra	DumpHexByte
-.byte2:
-	move.l	d6,d1
-	asr	#8,d1
-	lea	.byte3,a2
-	bra	DumpHexByte		
-.byte3:
-	move.l	d6,d1
-	lea	.byte4,a2
-	bra	DumpHexByte
-.byte4:
-	jmp	(a3)
-
-DefaultVars:					; Set defualtvalues
-	move.l	a6,d0
-	add.l	#EndData-V,d0
-	move.l	d0,CheckMemEditScreenAdr-V(a6)
-	rts
-
-
-
-DumpHexByte:				; PRE MEM-CODE!  dumps content of BYTE in d1 to serialport-
-					; INDATA:
-					;	D1 = byte to print
-					;	A2 = address to jump after done
-
-	lea	bytehextxt,a0
-	clr.l	d2
-	move.b	d1,d2
-	asl	#1,d2
-	add.l	d2,a0
-	lea	.char1,a1
-	bra	DumpSerialChar
-.char1:
-	lea	.char2,a1
-	bra	DumpSerialChar
-.char2:
-	jmp	(a2)
 
 
 
@@ -11327,6 +11441,10 @@ DetectMemory:
 					; Reading several times.  as sometimes reading once will give the correct answer on bad areas.
 					
 
+	btst	#6,$bfe001		; Check if LMB is pressed
+	beq	.wearedone
+
+
 	cmp.l	d4,d2			; Compare values
 	bne	.failed			; ok failed, no working ram here.
 	cmp.l	#0,d2			; was value 0? ok end of list
@@ -11380,7 +11498,7 @@ DetectMemory:
 
 .wehadmem:
 
-	add.l	#1,d1			; OK we found mem, lets add 1 do d1
+	add.l	#4,d1			; OK we found mem, lets add 4 do d1(as old routine was 64K blocks  now 256.  being lazy)
 	bra	.next
 
 .wearedone:
@@ -11394,13 +11512,18 @@ DetectMemory:
 	bne	.done
 
 .next:
+	btst	#6,$bfe001		; Check if LMB is pressed
+	beq	.wearedone
+
+
 	move.l	d0,(a1)			; put a note at the first found address. to mark this as already tagged
 	move.l	a0,4(a1)		; put a note of first block found
 	move.l	a1,8(a1)		; where this block was
 	move.l	d1,12(a1)		; total amount of 64k blocks found
 					; Strangly enough. this seems to also write onscreen at diagrom?
 
-	add.l	#64*1024,a1		; Add 64k for next block to test
+;	add.l	#64*1024,a1		; Add 64k for next block to test
+	add.l	#256*1024,a1		; Add 64k for next block to test
 	bra	.Detect
 .shadowdone:
 	TOGGLEPWRLED			; Flash with powerled doing this.. 
@@ -15524,6 +15647,8 @@ MemtextManualModeTxt:
 	dc.b	$a,$a,"Do you want to do a S)low test or a F)ast test?",0
 MemtextManualShadowTxt:
 	dc.b	$a,$a,"Do you want to disable shadowramtest? Y)es",0
+CheckMemNo:
+	dc.b	"Memorypass: ",0
 CheckMemRangeTxt:
 	dc.b	"Checking memory from ",1,1,1,1,1,1,1,1,1," to ",1,1,1,1,1,1,1,1,1," - Press any key/mousebutton to stop",0
 CheckMemCheckAdrTxt:	
@@ -15645,11 +15770,11 @@ IRQCIAIRQTestText2:
 
 	EVEN
 GFXtestMenuItems:
-	dc.l	GFXtestText,GFXtestMenu1,GFXtestMenu2,GFXtestMenu3,GFXtestMenu4,0
+	dc.l	GFXtestText,GFXtestMenu1,GFXtestMenu2,GFXtestMenu3,GFXtestMenu4,GFXtestMenu5,0
 GFXtestMenuCode:
-	dc.l	GFXTestScreen,GFXtest320x200,GFXTestScroll,MainMenu,0	
+	dc.l	GFXTestScreen,GFXtest320x200,GFXTestScroll,GFXTestRaster,MainMenu,0	
 GFXtestMenuKey:
-	dc.b	"1","2","3","9",0
+	dc.b	"1","2","3","4","9",0
 GFXtestText:
 	dc.b	2,"Graphicstests",$a,$a,0
 GFXtestMenu1:
@@ -15659,10 +15784,15 @@ GFXtestMenu2:
 GFXtestMenu3:
 	dc.b	"3 - Test Scroll",0
 GFXtestMenu4:
+	dc.b	"4 - Test raster (button to exit)",0
+GFXtestMenu5:
 	dc.b	"9 - Exit to mainmenu",0
 GFXtestNoSerial:
 	dc.b	$a,$d,$a,$d,"GRAPHICTEST IN ACTION, Serialoutput is not possible during test",$a,$d,$a,$d,0
-
+GFXtestRasterTxt:
+	dc.b	2,"CPU Busywaiting for raster, flicker is normal.",$a,0
+GFXtestRasterTxt2:
+	dc.b	2,"As testing keys/serial etc takes too much time.",0
 PortTestText:
 	dc.b	2,"Porttests",$a,$a,0
 PortTestMenu1:
@@ -16745,6 +16875,12 @@ CheckMemEditOldYpos:
 	dc.b	0			; Old Y pos of cursor
 CheckMemEditCharPos:
 	dc.b	0			; Current pos to edit memory.  0 or 1, 0 = high nibble, 1 = low)
+
+	EVEN
+
+MemTestPass:
+	dc.l	0			; Number of passes in memorycheck
+
 KeyBOld:
 	dc.b	0			; Stores old scancode of keyboard
 
