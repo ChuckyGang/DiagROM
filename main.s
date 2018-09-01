@@ -2849,7 +2849,7 @@ PutChar:
 .Normal:
 
 	mulu	#640,d3				; Multiply Y with 640 to get a correct Y pos on screen
-	add.w	d2,d3				; Add X pos to the d3. D3 now contains how much to add to bitplane to print
+	add.w	d2,d3				; AddÂ X pos to the d3. D3 now contains how much to add to bitplane to print
 
 	move.l	Bpl1Ptr-V(a6),a0		; load A0 with address of BPL1
 	move.l	Bpl2Ptr-V(a6),a1		; load A1 with address of BPL2
@@ -9127,7 +9127,7 @@ PortTestSer:
 
 
 .TestPin:
-						; Sets a bit and checks is a bit is set at CIAB Register
+						; Sets a bit and checks is a bit is setÂ at CIAB Register
 						; IN
 						;	D0 = Bit to set
 						;	D1 = Bit to test
@@ -16068,7 +16068,7 @@ bytehextxt:
 
 
 EnglishKey:
-	dc.b	"´1234567890-=| 0"
+	dc.b	"Â´1234567890-=| 0"
 	dc.b	"qwertyuiop[] "; 1c
 	dc.b	"123asdfghjkl;`" ; 2a
 	dc.b	"  456 zxcvbnm,./ " ;3b
@@ -16237,9 +16237,9 @@ EndRom:
 
 ROMEND:
 
-		section data,code_c
-		ifeq	rommode
 
+		ifeq	rommode
+		section data,code_c
 BeforeUsed:
 		blk.b	80*512*8,0
 
@@ -16482,7 +16482,7 @@ NoDraw:
 	EVEN
 	dc.l	0
 MenuNumber:
-	dc.w	0	; Contains the menunuber to be printed, from the Menus list
+	dc.w	0	; Contains the menunuber to be printed, from the MenusÂ list
 OldMenuNumber:
 	dc.w	0	; Contain the old menunumber
 NoChar:	dc.b	0	; if 0 print char, anything else, never do screenactions. (no chipmem avaible)
