@@ -1,4 +1,4 @@
-;APS00000030000000300002B71E0002C0CF0002C0CF0002C0CF0002C0CF0002C0CF0002C0CF0002C0CF
+;APS00000030000000300002B7900002C1410002C1410002C1410002C1410002C1410002C1410002C141
 ;
 ; DiagROM by John "Chucky" Hertell
 ;
@@ -12,7 +12,7 @@ VER:	MACRO
 	dc.b "1"			; Versionnumber
 	ENDM
 REV:	MACRO
-	dc.b "0"			; Revisionmumber
+	dc.b "1"			; Revisionmumber
 	ENDM
 
 VERSION:	MACRO
@@ -52,7 +52,7 @@ rom_base:	equ $f80000		; Originate as if data is in ROM
 ; Then some different modes for the assembler
 
 rommode =	1				; Set to 1 if to assemble as being in ROM
-a1k =		0				; Set to 1 if to assemble as for being used on A1000 (64k memrestriction)
+a1k =		1				; Set to 1 if to assemble as for being used on A1000 (64k memrestriction)
 debug = 	0				; Set to 1 to enable some debugshit in code
 amiga = 	1 				; Set to 1 to create an amiga header to write the ROM to disk
 
@@ -802,21 +802,22 @@ POSTDetectChipmem:
 					; A6 = Last usable address
 
 	
-;	sub.l	#EndData-Variables,a6	; Subtract total chipmemsize, putting workspace at end of memory
-;	sub.l	#2048,a6		; Subtract 2Kb more, "just to be sure"
-;					; A6 from now on points to where diagroms workspace begins. do NOT change A6
-;					; A6 is from now on STATIC
-;	move.l	a4,d1			; BUT first.  lets check if user pressed RIGHT mousebutton at start, in that case use START of memory as
-;					; base instead of last.
-;	btst	#2,d1
-;	beq	.noright
-;	move.l	d3,a6
-;.noright:
-
-
-
-
 ;----------- Chipmemtest done
+
+
+	move.l	a4,d1
+	btst	#0,d1				; Check if LMB was pressed, this means users asked for fastmem to be used, if found.
+	bne	.dofast
+	move.l	d1,a4				; store it back to a4
+
+
+	move.l	#-1,d1			; Set d1 to -1 telling machine we actually did skip fastmem test
+
+	cmp.l	#(EndData-Variables)/32768+1,d0
+	bgt	.skipfasttest		; ok we had enough chipmem
+					; so we are not happy with the amount of found chipmem
+.dofast:
+
 
 	PAROUT	#$fc			; Send $fd to parallelport
 	lea	parfctxt,a0		; And explaining simliar text to serialport.
@@ -881,7 +882,6 @@ POSTDetectChipmem:
 	eor.l	#$01110000,d0
 
 	move.w	#$003,$dff180
-
 	lea	$1000000,a1		; Detect motherboardmem on A3000/4000
 	lea	$7ffffff,a2
 
@@ -1024,6 +1024,7 @@ POSTDetectChipmem:
 
 
 	eor.l	#$11010000,d0
+
 .a1200done:
 
 	move.w	#$00c,$dff180
@@ -1127,6 +1128,9 @@ POSTDetectChipmem:
 	move.l	d1,d3
 
 
+
+
+
 	cmp.l	#0,d1			; check if we had any fastmem
 	bne	.fast			; if it wasnt 0 , we had fastmem
 	lea	NoFastFoundtxt,a0
@@ -1136,6 +1140,7 @@ POSTDetectChipmem:
 
 .fast:
 	move.l	d3,d1
+
 
 
 	move.l	d1,d3			; Store size in d3 as Dumpserial uses d1
@@ -1150,6 +1155,8 @@ POSTDetectChipmem:
 
 
 
+
+
 	;	memdetection done
 
 
@@ -1159,6 +1166,8 @@ POSTDetectChipmem:
 ;	a1				; end of fastmemblock
 ;	a4				; Startupbits (pressed mousebuttons etc)
 ;	a7				; Start of chipmem
+
+.skipfasttest:
 
 
 	clr.l	d7			; Be sure d7 is clear
@@ -1193,6 +1202,7 @@ POSTDetectChipmem:
 
 .enoughfast:
 
+
 	move.l	a0,a6			; set d6 to contain the pointer to fastmem
 	move.l	d1,d4			; copy size in blocks to d2
 	asl.l	#8,d4			; Multiply  d2 with 64 to get correct number of kilobytes of fastmem.;
@@ -1200,6 +1210,7 @@ POSTDetectChipmem:
 	move.l	a4,d7
 	bset.l	#6,d7			; Set "nodraw" on
 	move.l	d7,a4
+
 	bra	startcode
 
 	
@@ -1217,10 +1228,13 @@ POSTDetectChipmem:
 ;	ble	.wearechip		; if we are do not set to nodraw mode
 ;	move.l	#1,d7			; Set d7 to non 0 mode to force "nodraw" mode.
 .wearechip:
+
+
 	bra	startcode		; Start ROM for real, now with memory.
 	
 
 .chipLMB:				; LMB Pressed so we force chipmem if avaible, and if not just turn off screenstuff etc.
+
 
 	move.l	a4,d7
 	bset.l	#6,d7			; Set "nodraw" on
@@ -1235,7 +1249,6 @@ POSTDetectChipmem:
 
 
 startcode:
-
 	move.l	a4,d7
 	btst	#2,d7
 	bne	.rmb
@@ -1261,7 +1274,7 @@ startcode:
 .base3:
 	move.l	d3,d1			; Printed workmem
 
-					; a6  now contains workspace.
+					; a6  now contains workspace
 
 
 
@@ -1383,8 +1396,9 @@ code:
 	move.l	a7,a6			
 	add.l	#4,a6			; make a6 first usable address AFTER stack. for variables.
 
+
+
 	clr.l	d2
-	clr.l	d1
 
 	move.l	#RTEcode,$64
 	move.l	#RTEcode,$68
@@ -1491,6 +1505,7 @@ code:
 
 
 					; Before we actually do start, lets clear all used memory
+
 
 
 
@@ -1644,13 +1659,6 @@ code:
 .noser:
 	move.w	#0,SerialSpeed-V(a6)	; Set Serialspeed to 0
 .ser:
-
-
-;	lea	NoLoopback,a0
-;	lea	.kuken,a1
-;	bra	DumpSerial
-;.kuken:
-
 
 	lea	DetectRasterTxt,a0
 	bsr	SendSerial
@@ -1833,6 +1841,7 @@ code:
 .Chip:
 	bsr	RomChecksum
 
+
 	ifne	rommode
 
 		move.l	#.cpureturn,a5
@@ -1842,6 +1851,31 @@ code:
 		bsr	PrintCPU
 
  	endif
+
+
+	move.l	FastBlocksAtBoot-V(a6),d1
+
+	cmp.l	#-1,d1
+	bne	.notskippedfast
+
+
+	lea	FastDetectTxt,a0
+	move.l	#3,d1
+	bsr	Print
+
+	bsr	DetFastMem
+	
+
+	move.l	FastMem-V(a6),d1
+	asl.l	#6,d1
+	move.l	d1,TotalFast-V(a6)
+
+
+.notskippedfast:
+
+
+
+
 
 	lea	IfSoldTxt,a0
 	move.l	#5,d1
@@ -10030,6 +10064,284 @@ KeyBoardTest:
 
 
 
+DetFastMem:
+	clr.l	FastMem-V(a6)		; Clear amount of fastmem
+
+	lea	A24BitTxt,a0
+	move.l	#7,d1
+	bsr	Print
+
+
+	clr.l	d1
+	lea	$0,a0
+	lea	$0,a0
+	lea	$0,a3
+
+					; as d0 is used as a "random" number in memcheck.  but d0 is also detected chipmem.
+					; lets eor this to make it more... "random"
+					; this detection is quite.. "poor" as it will stop when finding one block of ram. so fragmented memory only first block
+					; will be found
+
+
+	clr.l	d2			; We set d2 to 0.  if it is anything else than 0 after 24bit tests, we have32bit cpu
+
+
+
+	cmp.l	#" PPC",$f00090		; Check if the string "PPC" is located in rom at this address. if so we have a BPPC
+					; that will disable the 68k cpu onboard if memory  below $40000000 is tested.
+	beq	.bppc
+
+
+	move.l	#"NONE",$700
+	move.l	#"24BT",$40000700	; Write "24BT" to highmem
+	cmp.l	#"24BT",$700		; IF memory is readable at $700 instead. we are using a cpu with 24 bit adress. no memory to detect in next routines
+	beq	.nop5
+	move.l	#1,d2			; blizzards etc will set this to 1..  apollo etc will not
+
+.nop5
+
+
+
+	move.l	#"NONE",$700
+	move.l	#"24BT",$2000700	; Write "24BT" to highmem
+	cmp.l	#"24BT",$700		; IF memory is readable at $700 instead. we are using a cpu with 24 bit adress. no memory to detect in next routines
+	beq	.no24
+	move.l	#1,d2			; other cards will trigger here
+	
+.no24
+	move.l	#"NONE",$700
+	move.l	#"24BT",$4000700	; Write "24BT" to highmem
+	cmp.l	#"24BT",$700		; IF memory is readable at $700 instead. we are using a cpu with 24 bit adress. no memory to detect in next routines
+	beq	.no24a
+	move.l	#1,d2			; blizzards etc will set this to 1..  apollo etc will not
+
+.no24a:
+
+	cmp.l	#0,d2			; if d2 is 0, we have 24 bit addressing
+	beq	.no32bit
+
+	PUSH
+	lea	NO,a0
+	move.l	#2,d1
+	bsr	Print
+	lea	NewLineTxt,a0
+	bsr	Print
+	POP
+
+	PUSH
+	lea	A3k4kMemTxt,a0
+	move.l	#7,d1
+	bsr	Print
+	POP
+
+
+	
+	eor.l	#$01110000,d0
+	lea	$1000000,a1		; Detect motherboardmem on A3000/4000
+	lea	$7ffffff,a2
+
+	lea	.a3k4kdone,a3
+	bra	DetectMemory
+.a3k4kdone:				; Again, the wonders without stack.  pasta-code.. :)
+	move.l	a0,d5			; Backup startaddress of memory found
+	move.l	a1,d4			; Backup endaddress of memory found
+	move.l	d1,d3			; Backup data of addresses found to registers not used
+	add.l	d1,FastMem-V(a6)
+
+	cmp.l	#0,a0			; was a0 0?  if so. no memory was found
+	beq	.det16
+
+	bsr	.PrintDetected
+
+
+.det16:
+	PUSH
+	lea	CpuMemTxt,a0
+	move.l	#7,d1
+	bsr	Print
+	POP
+
+
+	eor.l	#$01110000,d0
+
+	lea	$8000000,a1		; Detect cpuboard on A3000/4000
+	lea	$10000000,a2
+
+
+	lea	.a3k4kcpudone,a3
+	bra	DetectMemory
+.a3k4kcpudone:
+	move.l	a0,d5			; Backup startaddress of memory found
+	move.l	a1,d4			; Backup endaddress of memory found
+	move.l	d1,d3			; Backup data of addresses found to registers not used
+
+	cmp.l	#0,a0			; was a0 0?  if so. no memory was found
+	beq	.det26
+
+	add.l	d1,FastMem-V(a6)
+	bsr	.PrintDetected
+
+.det26:
+
+	PUSH
+	lea	A1200CpuMemTxt,a0
+	move.l	#7,d1
+	bsr	Print
+	POP
+
+
+	eor.l	#$01010000,d0
+	bra	.nobppc
+
+
+.bppc:
+
+	PUSH
+	lea	BPPCtxt,a0
+	move.l	#6,d1
+	bsr	Print
+	POP
+
+
+.nobppc:
+	lea	$40000000,a1
+	lea	$f0000000,a2
+	lea	.det1200cpu,a3
+
+	eor.l	#$11010000,d0
+
+
+	bra	DetectMemory
+.det1200cpu:
+	move.l	a0,d5			; Backup startaddress of memory found
+	move.l	a1,d4			; Backup endaddress of memory found
+	move.l	d1,d3			; Backup data of addresses found to registers not used
+
+
+	cmp.l	#0,a0			; was a0 0?  if so. no memory was found
+	beq	.det36
+
+	add.l	d1,FastMem-V(a6)
+	bsr	.PrintDetected
+
+.det36:
+
+	bra	.yes32bit
+	
+.no32bit:
+
+	PUSH
+	lea	YES,a0
+	move.l	#2,d1
+	bsr	Print
+	lea	NewLineTxt,a0
+	bsr	Print
+	POP
+
+
+.yes32bit:
+	PUSH
+	lea	a24BitAreaTxt,a0
+	move.l	#7,d1
+	bsr	Print
+	POP
+
+
+
+	lea	$200000,a1		; Detect memory on 24 bit range
+	lea	$9fffff,a2
+	lea	.24bitdone,a3
+	eor.l	#$10010000,d0
+
+	bra	DetectMemory
+.24bitdone:
+	move.l	a0,d5			; Backup startaddress of memory found
+	move.l	a1,d4			; Backup endaddress of memory found
+	move.l	d1,d3			; Backup data of addresses found to registers not used
+
+	cmp.l	#0,a0			; was a0 0?  if so. no memory was found
+	beq	.det46
+
+	add.l	d1,FastMem-V(a6)
+	bsr	.PrintDetected
+
+
+.det46:
+	PUSH
+	lea	FakeFastTxt,a0
+	move.l	#7,d1
+	bsr	Print
+	POP
+
+	eor.l	#$10010000,d0
+
+
+	lea	$c00000,a1		; Detect memory on 24 bit range
+	lea	$c80000,a2
+
+
+	eor.l	#$10110000,d0
+
+	lea	.fakefastdone,a3
+	bra	DetectMemory
+.fakefastdone:
+	move.l	a0,d5			; Backup startaddress of memory found
+	move.l	a1,d4			; Backup endaddress of memory found
+	move.l	d1,d3			; Backup data of addresses found to registers not used
+
+
+	cmp.l	#0,a0			; was a0 0?  if so. no memory was found
+	beq	.det56
+
+	add.l	d1,FastMem-V(a6)
+	bsr	.PrintDetected
+
+
+
+
+.det56:
+
+	rts
+
+
+
+.PrintDetected:
+
+	PUSH
+	lea	FastFoundtxt,a0
+	move.l	#6,d1
+	bsr	Print
+	POP
+
+
+	PUSH	
+	move.l	d5,d0
+	bsr	binhex
+	add.l	#1,a0
+	move.l	#6,d1
+	bsr	Print
+	POP
+
+	PUSH
+	lea	MinusDTxt,a0
+	move.l	#6,d1
+	bsr	Print
+	
+
+	move.l	d4,d0
+	bsr	binhex
+	add.l	#1,a0
+	move.l	#6,d1
+	bsr	Print
+
+
+	lea	NewLineTxt,a0
+	bsr	Print
+	POP
+	rts
+
+
+
 SSPError:
 	move.l	a0,DebugA0-V(a6)		; Store a0 to DebugA0 so we have it saved. as next line will overwrite it
 	lea	SSPErrorTxt,a0
@@ -11007,6 +11319,10 @@ DoAutoconfig:
 	rts
 
 .ReadByte:			; Reads one byte from Cardexpansion.
+
+	bsr	WaitLong	; Put in some wait here, so slow boards can wake up aswell
+
+
 				; IN:
 				; 	D0 = Location into buffer to read
 				;	A0 = Card
@@ -13389,7 +13705,7 @@ InputHexNum:					; Inputs a 32 bit hexnumber
 	cmp.b	#1,LMB-V(a6)
 	beq	.exit
 	bsr	WaitShort
-	bsr	GetChar				; Get a char from keyboard/serial
+	jsr	GetChar				; Get a char from keyboard/serial
 	bsr	WaitLong
 	cmp.b	#"x",d0				; did user press X?
 	beq	.xpressed
@@ -15126,7 +15442,7 @@ parfetxt:
 parfdtxt:
 	dc.b	"- Parallel Code $fd - Start of chipmemdetection",$a,$d,0
 parfctxt:
-	dc.b	"- Parallel Code $fc - Start of non autoconfig fastmemdetection",$a,$d,0
+	dc.b	"- Parallel Code $fc - Start of non autoconfig fastmemdetection (as no chip found/startup check)",$a,$d,0
 parfbtxt:
 	dc.b	"- Parallel Code $fb - Memorydetection done",$a,$d,0
 parfatxt:
@@ -15960,6 +16276,9 @@ RTCDay:
 	dc.b	"   Friday",0
 	dc.b	" Saturday",0	
 
+FastDetectTxt:
+	dc.b	$a,$a,"Doing some fastmem detection skipped at start as chip was found",$a
+	dc.b	"Pressing left mousebutton will cancel detection (if hanged)",$a,$a,0
 AutoConfZ2Txt:
 	dc.b	"Scanning Zorro II Area",$a,0
 AutoConfZ3Txt:
@@ -16007,8 +16326,21 @@ AutoConfToomuchTxt:
 	EVEN
 SectorErrorTxt:
 	dc.b	2,"Error finding sector possibly readerror",$a,$a,0
+A24BitTxt:
+	dc.b	"Checking if a 24 Bit address cpu is used: ",0
+A3k4kMemTxt:
+	dc.b	" - Checking for A3000/A4000 Motherboardmemory",$a,0
+CpuMemTxt:
+	dc.b	" - Checking for CPU-Board Memory (most A3k/A4k)",$a,0
+A1200CpuMemTxt:
+	dc.b	" - Checking for CPU-Board Memory (most A1200)",$a,0
+a24BitAreaTxt:
+	dc.b	" - Checking for Memory in 24 Bit area (NON AUTOCONFIG)",$a,0
+FakeFastTxt:
+	dc.b	" - Checking for Memory in Ranger or Fakefast area",$a,0
 
-
+BPPCtxt:
+	dc.b	"   - BPPC Found, detecting in a smaller memoryarea",$a,0
 S8MB:
 	dc.b	"8MB",0
 S64k:
@@ -16814,6 +17146,8 @@ GfxChipset:
 	EVEN
 BootMBFastmem:				; Amount of motherboard fastmem detected at bootpoint
 	dc.l	0
+FastMem:
+	dc.l	0			; Variable for fastmem found during init with screen.
 DetectMemRnd:
 	dc.l	0			; used as a flag to tag for shadowram
 FastmemBlock:
