@@ -1,4 +1,4 @@
-;APS0000002F0000002F0002FD7E0003072F0003072F0003072F0003072F0003072F0003072F0003072F
+;APS0000002F0000002F0002FFAD0003095E0003095E0003095E0003095E0003095E0003095E0003095E
 ;
 ; DiagROM by John "Chucky" Hertell
 ;
@@ -2290,8 +2290,8 @@ code:
 	bsr	GetInput
 	cmp.b	#1,RMB-V(a6)			; RMB pressed? then turn serial on
 	beq	.serialon
-;	btst	#2,d0
-;	bne	.serialon			; if any key was pressed turn serial on
+	btst	#2,d0
+	bne	.serialon			; if any key was pressed turn serial on
 	btst	#3,d0
 	bne	.serialon
 	add.l	#1,d6
@@ -3115,6 +3115,11 @@ GetCharSerial:
 	cmp.b	#32,d0				; Strip away all nonascii chars
 	blt	.noascii
 
+	cmp.b	#1,SerAnsi35Flag-V(a6)
+	beq	.ansimode35on
+	cmp.b	#1,SerAnsi36Flag-V(a6)
+	beq	.ansimode36on
+
 	cmp.b	#$38,d0
 	beq	.pgup
 
@@ -3129,6 +3134,13 @@ GetCharSerial:
 	beq	.right
 	cmp.b	#$44,d0				;LEFT
 	beq	.left
+
+	cmp.b	#$36,d0				;possible pgdwn
+	beq	.ansimode36
+
+	cmp.b	#$35,d0
+	beq	.ansimode35			;possible pgup
+
 .noascii:
 	clr.b	d0
 	bra	.ansiexit
@@ -3136,6 +3148,28 @@ GetCharSerial:
 	move.b	#0,SerAnsiFlag-V(a6)
 	bra	.ansiexit
 
+.ansimode35:
+	move.b	#1,SerAnsi35Flag-V(a6)
+	bra	.ansiexit
+
+.ansimode36:
+	move.b	#1,SerAnsi36Flag-V(a6)
+	bra	.ansiexit
+
+.ansimode35on:
+	clr.b	SerAnsi35Flag-V(a6)
+	cmp.b	#$7e,d0				; we have pgup
+	beq	.pgup
+	clr.b	SerAnsiFlag-V(a6)
+	rts
+
+.ansimode36on:
+	clr.b	SerAnsi36Flag-V(a6)
+	cmp.b	#$7e,d0				; we have pgdown
+	beq	.pgdown
+	clr.b	SerAnsiFlag-V(a6)
+	rts
+	
 .pgup:
 	clr.b	SerAnsiFlag-V(a6)
 	move.b	#1,skipnextkey-V(a6)
@@ -17258,7 +17292,7 @@ CIATestTxt2:
 CIATestTxt3:
 	dc.b	2,"Flashing on screen is fully normal, indicating CIA timing. NTSC Will fail",$a,$a,0
 CIATestTxt4:
-	dc.b	"                                  PAL     NSTC     Result",$a,$a,0
+	dc.b	"                                  PAL     NTSC     Result",$a,$a,0
 CIATestTxt5:
 	dc.b	"Result may vary of current screenmode (changeable by spacebar in mainmenu)",$a
 	dc.b	"and HW settings so OK in any location is generally a good result!",$a,$a,0
@@ -18181,6 +18215,10 @@ SerBuf:
 	blk.b	256,0	; 256 bytes of serialbuffer
 SerAnsiFlag:
 	dc.b	0	; nonzero means that we are in buffermode (number is actually number of chars in buffer)
+SerAnsi35Flag:
+	dc.b	0
+SerAnsi36Flag:
+	dc.b	0
 SerAnsiBufLen:
 	dc.b	0	; Buffertlength used for the moment.
 	EVEN
