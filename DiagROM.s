@@ -1,4 +1,4 @@
-;APS0000002F0000002F0002FFAD0003095E0003095E0003095E0003095E0003095E0003095E0003095E
+;APS0000002F0000002F000300F400030AA500030AA500030AA500030AA500030AA500030AA500030AA5
 ;
 ; DiagROM by John "Chucky" Hertell
 ;
@@ -12,7 +12,7 @@ VER:	MACRO
 	dc.b "1"			; Versionnumber
 	ENDM
 REV:	MACRO
-	dc.b "2"			; Revisionmumber
+	dc.b "2.1"			; Revisionmumber
 	ENDM
 
 VERSION:	MACRO
@@ -51,7 +51,7 @@ rom_base:	equ $f80000		; Originate as if data is in ROM
 
 ; Then some different modes for the assembler
 
-rommode =	0				; Set to 1 if to assemble as being in ROM
+rommode =	1				; Set to 1 if to assemble as being in ROM
 a1k =		0				; Set to 1 if to assemble as for being used on A1000 (64k memrestriction)
 debug = 	0				; Set to 1 to enable some debugshit in code
 amiga = 	1 				; Set to 1 to create an amiga header to write the ROM to disk
@@ -307,6 +307,11 @@ Begin:
 .NOP1RMB:
 	btst	#14,$dff016		; Check RMB port 2
 	bne	.NOP2RMB
+
+.aaa:
+	move.b	$dff006,$dff181
+	bra	.aaa
+
 	bset	#3,d0
 .NOP2RMB:
 
@@ -1178,7 +1183,7 @@ POSTDetectChipmem:
 
 
 	lea	$40000000,a1
-	lea	$f0000000,a2
+	lea	$e0000000,a2
 	lea	.det1200cpu,a3
 
 	eor.l	#$11010000,d0
@@ -2281,7 +2286,7 @@ code:
 	cmp.b	#1,LoopB-V(a6)			; Same if loopbackadapter was attached
 	beq	.serialon
 
-	jsr	ClearSerialBuffer
+	jsr	ClearBuffer
 
 	move.l	#1200,d7			; read data for a while.. Giving user a possability of try to press a key on serialport
 	clr.l	d6
@@ -2318,7 +2323,7 @@ code:
 .serialon:
 
 
-	jsr	ClearSerialBuffer
+	jsr	ClearBuffer
 
 ; Clears screen and lets go on
 
@@ -2777,9 +2782,16 @@ ReadSerial:					; Read serialport, and if anything there store it in the buffer
 .exit:
 	rts
 
-ClearSerialBuffer:
+ClearBuffer:
+	
+	move.l	#20,d7
+.loop
+	bsr	GetInput
+	dbf	d7,.loop
 	clr.b	SerBufLen-V(a6)
 	bsr	ClearInput
+	move.b	#0,SerBufLen-V(a6)		; Check if we have a serialbuffer, if not, just exit
+
 	rts
 	
 
@@ -5781,8 +5793,17 @@ MemTest:
 	move.l	#18,d1
 	bsr	SetPos
 	lea	NotImplTxt,a0
-	move.l	#1,d1
+	move.l	#3,d1
 	bsr	Print
+
+	move.l	#0,d0
+	move.l	#29,d1
+	bsr	SetPos
+	lea	NotImplTxt,a0
+	move.l	#3,d1
+	bsr	Print
+
+
 
 	bsr	.UpdateMem
 
@@ -7853,6 +7874,8 @@ IRQCIAIRQTest:
 
 .done7:
 
+	jsr	ClearBuffer
+
 
 	lea	IRQTestDone,a0
 	move.l	#2,d1
@@ -8008,10 +8031,10 @@ IRQCIATest:
 	bsr	.CiaResult
 
 
-	move.l	#780800,CIAPalLow-V(a6)
-	move.l	#788200,CIAPalHigh-V(a6)
-	move.l	#660000,CIANtscLow-V(a6)
-	move.l	#663400,CIANtscHigh-V(a6)
+	move.l	#780000,CIAPalLow-V(a6)
+	move.l	#800000,CIAPalHigh-V(a6)
+	move.l	#780000,CIANtscLow-V(a6)
+	move.l	#800000,CIANtscHigh-V(a6)
 
 
 	lea	CIATestBTOD,a0
@@ -8021,6 +8044,7 @@ IRQCIATest:
 	move.l	d0,d5
 	bsr	.CiaResult
 
+	jsr	ClearBuffer
 
 .keyloop:
 	bsr	GetInput
@@ -8242,8 +8266,6 @@ IRQCIACIATest:
 	move.l	#7,d5	
 	bsr	.TestCIA
 
-;	bra	.kuk
-
 
 	lea	CIAATestBATxt,a0
 	lea	$bfe201,a5			; load a5 with a base
@@ -8273,8 +8295,13 @@ IRQCIACIATest:
 	bsr	.TestCIA
 
 	bsr	TestBTOD
-.kuk:
 
+
+	jsr	ClearBuffer
+
+	lea	ButtonExit,a0
+	move.l	#1,d0
+	bsr	Print
 
 
 .keyloop:
@@ -9611,7 +9638,7 @@ SystemInfoTest:
 
 .no1111atf0:
 	lea	NO,a0
-	move.l	#1,d1
+	move.l	#2,d1
 	bsr	Print
 .donerom:	
 
@@ -11395,13 +11422,13 @@ DetFastMem:
 
 .nobppc:
 	lea	$40000000,a1
-	lea	$f0000000,a2
+	lea	$ee000000,a2
 	lea	.det1200cpu,a3
 
 	eor.l	#$11010000,d0
 
 
-	bra	DetectMemory
+;	bra	DetectMemory
 .det1200cpu:
 
 	move.l	a0,d5			; Backup startaddress of memory found
@@ -11747,7 +11774,10 @@ Setup:
 	lea	SetupTxt,a0
 	move.l	#1,d1
 	bsr	Print
-;	bsr	WaitButton
+	lea	NotImplTxt,a0
+	move.l	#1,d1
+	bsr	Print
+
 	bsr	WaitPressed
 	bsr	WaitReleased
 	bra	MainMenu
@@ -11957,7 +11987,8 @@ ricoh:						; RICOH chipset detected.
 
 	sub.l	#1,d0
 
-	cmp.b	#11,d0
+
+	cmp.b	#12,d0
 	blt	.rnoover
 	move.l	#12,d0
 .rnoover:
@@ -12922,6 +12953,7 @@ DetectMemory:
 					;	a0 = first usable address
 					;	a1 = last usable address
 
+
 	move.l	a1,d7
 	and.l	#$fffffffc,d7		; just strip so we always work in longword area (just to be sure)
 	move.l	d7,a1
@@ -12933,6 +12965,7 @@ DetectMemory:
 	move.l	(a1),d3			; Take a backup of content in memory to D3
 
 .loop:
+
 	cmp.l	a1,a2			; check if we tested all memory
 	blo	.wearedone		; we have, we are done!
 
@@ -12961,6 +12994,8 @@ DetectMemory:
 
 	cmp.l	d4,d2			; Compare values
 	bne	.failed			; ok failed, no working ram here.
+
+
 	cmp.l	#0,d2			; was value 0? ok end of list
 	bne	.loop			; if not, lets do this test again
 					; we had 0, we have working RAM
@@ -12972,12 +13007,25 @@ DetectMemory:
 	move.l	a5,d5
 
 .loopa:
-	sub.l	#1,d6
+
+
 	cmp.l	#0,d6
 	beq	.done			; we went all to bit 0.. we are done I guess
+
+	sub.l	#1,d6
+	cmp.l	#0,d6
+	beq	.done			; we went all to bit 0.. we are done I guess	---------
+
+
 	btst	d6,d5			; scan until it isnt a 0
 	beq.s	.loopa
 .bitloop:
+	btst	#6,$bfe001		; Check if LMB is pressed
+	beq	.wearedone
+
+
+
+
 
 	bclr	d6,d5			; ok. we are at that address, lets clear first bit of that address
 	move.l	d5,a3
@@ -13020,7 +13068,10 @@ DetectMemory:
 
 .shadow:
 	TOGGLEPWRLED			; Flash with powerled doing this.. 
+
 .failed:
+
+
 	move.l	d3,(a1)			; restore backup of data
 	cmp.l	#0,a0			; ok was a0 0? if so, we havent found memory that works yet, lets loop until all area is tested
 	bne	.done
@@ -13642,7 +13693,7 @@ DiskdriveTest:
 .ShowMem:
 	clr.l	d3				; Sector to find
 .Showmems:
-	bsr	ClearScreen
+	jsr	ClearScreen
 
 	PUSH
 
@@ -16823,6 +16874,10 @@ Bps115200:
 	dc.b	"115200",0
 BpsLoop:
 	dc.b	"LOOP  ",0
+DOT:
+	dc.b	".",0
+MINUS:
+	dc.b	"-",0
 ON:
 	dc.b	"ON ",0
 OFF:
@@ -16851,6 +16906,8 @@ FIRE:
 	dc.b	"FIRE",0
 FAILED:
 	dc.b	"FAILED",0
+TIMEOUT:
+	dc.b	"TIMEOUT",0
 SFAILED:
 	dc.b	27,"[31mFAILED",27,"[0m",0
 DDETECTED:
@@ -17115,6 +17172,7 @@ AudioModOptionTxt:
 	dc.b	$a,"         Channel 1:      Channel 2:      Channel 3:      Channel 4:    ",$a
 	dc.b	"                  Audio F)ilter:       Mastervolume (+ -):   ",$a,$a,0
 AudioModEndTxt:
+ButtonExit:
 	dc.b	2,"Press any button to exit",0
 AudioModName:
 	dc.b	$a,"Modulename: ",0
@@ -17593,7 +17651,7 @@ A3k4kMemTxt:
 CpuMemTxt:
 	dc.b	" - Checking for CPU-Board Memory (most A3k/A4k)",$a,0
 A1200CpuMemTxt:
-	dc.b	" - Checking for CPU-Board Memory (most A1200)",$a,0
+	dc.b	" - Checking for CPU-Board Memory (most A1200)",$a,"    (WILL crash with A3640/A3660 and Maprom on)",$a,0
 a24BitAreaTxt:
 	dc.b	" - Checking for Memory in 24 Bit area (NON AUTOCONFIG)",$a,0
 FakeFastTxt:
