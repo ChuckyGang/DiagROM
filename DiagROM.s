@@ -1,4 +1,4 @@
-;APS0000002F0000002F000300F400030AA500030AA500030AA500030AA500030AA500030AA500030AA5
+;APS0000002F0000002F00032F6100033912000339120003391200033912000339120003391200033912
 ;
 ; DiagROM by John "Chucky" Hertell
 ;
@@ -12,7 +12,7 @@ VER:	MACRO
 	dc.b "1"			; Versionnumber
 	ENDM
 REV:	MACRO
-	dc.b "2.1"			; Revisionmumber
+	dc.b "3 BETA"			; Revisionmumber
 	ENDM
 
 VERSION:	MACRO
@@ -46,6 +46,15 @@ VBLT:		MACRO
 .vblt\@		btst	#14,$dff002
 		bne.s	.vblt\@
 		ENDM
+
+HALT:		MACRO
+.halt\@
+		move.b	$dff006,$dff181
+;		btst	#6,$bfe001
+;		bne.s	.halt\@
+		bra	.halt\@
+		ENDM
+
 
 rom_base:	equ $f80000		; Originate as if data is in ROM
 
@@ -92,7 +101,19 @@ HIRESSize:	equ	80*512
 						; just save the file to disk.
 	ifne	amiga
 
-						; First lets fix some checksums
+	move.l	#IRQDATA-EndRom,a+(EndRom-TheStart)
+
+	lea	2+a+(EndRom-TheStart),a2		; Get the first "unused" adress of rom
+	move.l	#EndRom,d7
+.AdrLoop:
+	move.l	d7,(a2)+
+	add.l	#4,d7
+	cmp.l	#a+(IRQDATA-TheStart),a2
+	blt.s	.AdrLoop			; Simply fill the rom with adressdata, so we have constants to test addresserors.
+						; this way we can atleast handle some data we know shold be real.
+
+
+					; First lets fix some checksums
 	move.l	#Checksums-rom_base,d0
 	lea	a,a0
 	move.l	a0,a1
@@ -165,7 +186,7 @@ SaveFile:
 Dos:
 	dc.b	"dos.library",0
 
-a:	equ $45000000		; YES! this is as dirty as yesterdays underwear, but needed..  do not do this if you care about other running stuff.. OK?
+a: 	equ $45000000		; YES! this is as dirty as yesterdays underwear, but needed..  do not do this if you care about other running stuff.. OK?
 
 		ifeq	a1k
 b:	equ a+512*1024
@@ -180,6 +201,7 @@ b:	equ a+64*1024
 	ifne	amiga           ; 
 	load a			; PUT Data in where A points to, change this to a safe location for your machine.
 	endc
+
 
 START:
 
@@ -227,30 +249,27 @@ Begin:
 
 	ifne	rommode
 ; Code in ROM mode
-
-	clr.l	d0
-	clr.l	d1
-	clr.l	d2
-	clr.l	d3
-	clr.l	d4
-	clr.l	d5
-	clr.l	d6
-	clr.l	d7
-	lea	$0,a0
-	lea	$0,a1
-	lea	$0,a2
-	lea	$0,a3
-	lea	$0,a4
-	lea	$0,a5
-	lea	$0,a6
+	move.l	#-1,d0
+	move.l	#-1,d1
+	move.l	#-1,d2
+	move.l	#-1,d3
+	move.l	#-1,d4
+	move.l	#-1,d5
+	move.l	#-1,d6
+	move.l	#-1,d7
+	lea	$ffffffff,a0
+	lea	$ffffffff,a1
+	lea	$ffffffff,a2
+	lea	$ffffffff,a3
+	lea	$ffffffff,a4
+	lea	$ffffffff,a5
+	lea	$ffffffff,a6
+	lea	$ffffffff,a7		; As we have no memory.. we can actually use the A7 register to save data! WIN!!
+					; Lets set all registers to -1 so we can see what register is used and what isnt
 	
-
-	lea	$400,SP			; Set the stack. BUT!!! do not use it yet. we need to check chipmem first!
 
 	move.b	#$ff,$bfe200
 	move.b	#$ff,$bfe300
-
-
 
 	move.b	#0,$bfe001			; Clear register.
 	move.b	#$ff,$bfe301
@@ -258,9 +277,9 @@ Begin:
 	move.b	#3,$bfe201	
 	move.b	#0,$bfe001		; Powerled will go ON! so user can see that CPU works
 	move.b	#$40,$bfed01
-	move.w	#$f0f,$dff180
+	move.w	#$f0f,$dff180		; Set color to Purple.  this will most likly never been shown
 	move.w	#$ff00,$dff034
-	move.w	#$0ff,$dff180
+	move.w	#$0ff,$dff180		; Set color to Cyan, this will most likly never been shown either.
 	move.b	#$ff,$bfd300
 	or.b	#$f8,$bfd100
 	nop
@@ -280,19 +299,13 @@ Begin:
 	move.l	#POSTUnimplInst,$28
 	move.l	#POSTUnimplInst,$2c
 
-					; all code.  A4.. so lets store the result therea
+
+	clr.l	d0					; all code.  A4.. so lets store the result therea
 			
 	move.b	#$88,$bfed01
 	or.b	#$40,$bfee01		; For keyboard
 					; We will print the result on the serialport later.
 					
-	move.l	#0,d0			; Make sure D0 is cleared.
-	
-	lea	AnsiNull,a0		; Clear screen, clear ansi attributes, set default color
-	lea	.jmp0,a1
-	bra	DumpSerial		; Dump to serial, after it jump to where a1 points at.
-.jmp0:
-
 	btst	#6,$bfe001		; Check LMB port 1
 	bne	.NOP1LMB		; NOT pressed.. Skip to next
 	bset	#0,d0
@@ -307,17 +320,30 @@ Begin:
 .NOP1RMB:
 	btst	#14,$dff016		; Check RMB port 2
 	bne	.NOP2RMB
-
-.aaa:
-	move.b	$dff006,$dff181
-	bra	.aaa
-
 	bset	#3,d0
 .NOP2RMB:
+	btst	#8,$dff016		; Check MMB Port 1
+	bne	.NOP1MMB
+	bset	#4,d0			; MMB Port 1
+.NOP1MMB:
+	btst	#12,$dff016		; Check MMB Port 2
+	bne.s	.NOP2MMB
+	bset	#5,d0			; MMB Port 2
+.NOP2MMB:
+
+
 
 	move.l	d0,a4			; OK Store the result in a4 (YEAH I know it is not used for data.. but  no mem.. and only register not used)
 
 
+
+
+	move.l	#0,d0			; Make sure D0 is cleared.
+	
+	lea	AnsiNull,a0		; Clear screen, clear ansi attributes, set default color
+	lea	.jmp0,a1
+	bra	DumpSerial		; Dump to serial, after it jump to where a1 points at.
+.jmp0:
 
 
 
@@ -326,12 +352,123 @@ Begin:
 	bra	DumpSerial		; Dump to serial, after it jump to where a1 points at.
 .jmp1:
 
+	PAROUT #$ff			; Send #$ff to Paralellport.
+	lea	parfftxt,a0		; And explaining simliar text to serialport.
+	lea	.jmp2,a1
+	bra	DumpSerial
+.jmp2:
+
 	move.w	#$aaa,$dff180		; Set screen to light grey
+
+
+
+
+	lea	RomAdrtest,a0
+	lea	.romadr,a1
+	bra	DumpSerial
+	
+.romadr:
+
+	lea	EndRom,a5		; Lets scan trough the "unused" part of the ROM. every longword have its address written to it
+	move.l	IRQDATA,d4		; so let the machine look through those addresses to see if it is correct.
+
+.AdrTest:
+	move.l	a5,a6
+
+	
+	move.l	(a5),d0			; load d0 with what was in the address
+	move.l	a6,a5
+
+
+
+
+	cmp.l	a5,d0			; was is it the correct data?
+	beq	.ok
+
+
+	move.l	a4,d1
+	bset	#10,d1			; Set bit 10.. we had an addresserror
+	swap	d1
+	add.w	#1,d1
+	cmp.w	#200,d1
+	bgt	.adrtoomany
+	swap	d1
+	move.l	d1,a4
+
+	lea	RomAdrErr,a0
+	lea	.romadr2,a1
+	bra	DumpSerial
+
+.romadr2:
+	move.b	$dff006,$dff180
+
+	move.l	a5,d1
+	lea	.aab,a2
+	bra	DumpHexLong
+.aab:
+
+	lea	.afterspace,a1
+	move.l	#" ",d1
+	bsr	DumpSerialCharacter
+.afterspace:
+
+	move.l	a5,d1
+	lea	.ok,a3
+	bra	DumpBinSerial
+
+
+
+
+
+.ok:
+	move.w	#$00f,$dff180
+	add.l	#4,a5
+	cmp.l	a3,d4
+	blt	.AdrTest
+	bra	.adrdoneok
+	
+.adrtoomany:
+	swap	d1
+	move.l	d1,a4
+.adrtoomany2:
+	lea	RomAdrErrors,a0
+	lea	.adrdone,a1
+	bra	DumpSerial
+
+.adrdoneok:
+
+	lea	SPACEOK,a0
+	lea	.adrdone,a1
+	bra	DumpSerial
+
+.adrdone:
+
+
+	move.l	#-1,d0			; ok we have went through that .. lets set all unused registers to -1 again to keep track of em
+	move.l	#-1,d1
+	move.l	#-1,d2
+	move.l	#-1,d3
+	move.l	#-1,d4
+	move.l	#-1,d5
+	move.l	#-1,d6
+	move.l	#-1,d7
+	lea	$ffffffff,a0
+	lea	$ffffffff,a1
+	lea	$ffffffff,a2
+	lea	$ffffffff,a3
+	lea	$ffffffff,a5
+	lea	$ffffffff,a6
+	lea	$ffffffff,a7		; As we have no memory.. we can actually use the A7 register to save data! WIN!!
+
+
+
+
+
+
 
 	lea	.cleardone,a0
 	bra	DumpClearSerial
 .cleardone:
-
 
 
 	lea	LoopSerTest,a0
@@ -346,19 +483,23 @@ Begin:
 
 	TOGGLEPWRLED
 
+
 	clr.l	d6			; Clear D6, if this is anything else than 0 efter loopbacktest, we had an echo (adapter)
 	
 	move.l	#"<",d2
+
 	lea	.looptst1,a0
-	bsr	Loopbacktest
+	jmp	Loopbacktest
 .looptst1:
-	move.w	#$777,$dff180		; Set screen to light grey
+
+
+	move.w	#$777,$dff180		; Set screen to medium grey
 	TOGGLEPWRLED
 	move.l	#">",d2
 	lea	.looptst2,a0
 	jmp	Loopbacktest
 .looptst2:
-	move.w	#$555,$dff180		; Set screen to light grey
+	move.w	#$555,$dff180		; Set screen to dark grey
 	TOGGLEPWRLED
 	cmp.b	#0,d6
 	beq	.noadapter
@@ -369,9 +510,11 @@ Begin:
 	bra	DumpSerial
 .loopdetect:
 
+
 					; ok we had detected a loopback, lets mark it in our "secret" register (in A4 now) by setting bit 4
 	move.l	a4,d0
-	bset	#4,d0
+	bset	#9,d0			; Set that loopbackadapter was detected
+	bset	#7,d0			; Also set that no serial output wanted
 	move.l	d0,a4			; ok we have restored it in A4 now.
 
 	bra	.goon
@@ -384,14 +527,10 @@ Begin:
 
 
 .goon:
-	move.l	a4,$4
+
+	move.l	a4,$4			; KUK  uh  why?
 
 
-	PAROUT #$ff			; Send #$ff to Paralellport.
-	lea	parfftxt,a0		; And explaining simliar text to serialport.
-	lea	.jmp2,a1
-	bra	DumpSerial
-.jmp2:
 	lea	Initmousetxt,a0
 	lea	.jmp3,a1
 	bra	DumpSerial
@@ -460,10 +599,10 @@ Begin:
 
 
 
+
 	move.w	#$200,$dff100
 	move.w	#0,$dff110
 
-.RMB:						; We had RMB pressed so we skipped DMA stuff..
 						; next part will hopefully go so fast so the user will not release the button
 						; so we can force data to fastmem if any.
 
@@ -487,7 +626,7 @@ Begin:
 	move.l	a4,d0
 	bclr	#0,d0				; Clear LMB1
 	bclr	#1,d0				; Clear LMB2
-	bset	#5,d0				; Set bit 5 as OVL ERROR
+	bset	#8,d0				; Set bit 8 as OVL ERROR
 	move.l	d0,a4				; store it back to a4
 	lea	SFAILED,a0
 	lea	.ovldone,a1
@@ -505,7 +644,6 @@ Begin:
 
 
 
-
 	PAROUT	#$fe			; Send #$fe to Paralellport.
 	lea	parfetxt,a0			; And explaining simliar text to serialport.
 	lea	.ldsuds1,a1
@@ -513,6 +651,8 @@ Begin:
 
 .ldsuds1:
 						; Time to detect some chipmem
+
+
 
 	lea	writeffff,a0
 	lea	.ldsuds2,a1
@@ -693,6 +833,36 @@ Begin:
 
 
 
+
+
+;---------------------------------------------------------------------------------------------------------------------------------
+;---------------------------------------------------------------------------------------------------------------------------------
+;---------------------------------------------------------------------------------------------------------------------------------
+;---------------------------------------------------------------------------------------------------------------------------------
+;---------------------------------------------------------------------------------------------------------------------------------
+;---------------------------------------------------------------------------------------------------------------------------------
+;---------------------------------------------------------------------------------------------------------------------------------
+; Chipmemtest starts here
+
+
+	move.l	#-1,d0			; ok we have went through that .. lets set all unused registers to -1 again to keep track of em
+	move.l	#-1,d1
+	move.l	#-1,d2
+	move.l	#-1,d3
+	move.l	#-1,d4
+	move.l	#-1,d5
+	move.l	#-1,d6
+	move.l	#-1,d7
+	lea	$ffffffff,a0
+	lea	$ffffffff,a1
+	lea	$ffffffff,a2
+	lea	$ffffffff,a3
+	lea	$ffffffff,a5
+	lea	$ffffffff,a6
+	lea	$ffffffff,a7		; As we have no memory.. we can actually use the A7 register to save data! WIN!!
+
+
+
 POSTDetectChipmem:
 
 
@@ -715,6 +885,7 @@ POSTDetectChipmem:
 		
 .nldone:
 
+
 .detectloop:
 	move.l	(a6),d5				; Do a backup of content
 	lea	MEMCheckPattern,a5		; Load list of data to test
@@ -733,7 +904,7 @@ POSTDetectChipmem:
 .addrdone:
 
 	move.l	a6,d1
-	lea	.addrout,a3
+	lea	.addrout,a2
 	bra	DumpHexLong
 .addrout:
 
@@ -753,12 +924,42 @@ POSTDetectChipmem:
 	move.l	(a6),d4				; Read data from memory
 	move.l	(a6),d4				; Read data from memory (read several times.. this will make sure it is real data)
 
+;	move.l	#$ffff0000,d4
 	cmp.l	(a5),d4				; Check if written data is the same as the read data.
 	beq	.ok				; YES it is OK
+
+
 
 	cmp.l	#0,d3				; Check if d3 is 0, in that case we havent found any memory
 						; and user might want to see whats wrong. if we had. we are simply out of mem
 	bne	.faildone
+
+	cmp.l	#$80400,a6
+	beq	.divider
+	cmp.l	#$100400,a6
+	beq	.divider
+	cmp.l	#$180400,a6
+	beq	.divider
+	bra	.nodivider
+.divider:
+	swap	d0
+	cmp.b	#1,d0
+	beq	.norow					; if d0 (higher word) is 1 we already printed a divider this time
+
+	move.b	#1,d0
+	lea	Divider2Txt,a0				; Prints text "Write:"
+	lea	.norow,a1
+	bra	DumpSerial
+
+.norow
+	swap	d0
+	bra	.nocleard0
+.nodivider:
+	swap	d0
+	clr.w	d0
+	swap	d0					; just make sure upper word of d0 is clear
+.nocleard0:
+
 
 	lea	WTxt,a0				; Prints text "Write:"
 	lea	.wtxtdone,a1
@@ -767,18 +968,23 @@ POSTDetectChipmem:
 	move.l	a6,d1				; Print address to check
 
 	move.l	(a5),d1
-	lea	.wbindone,a3
+	lea	.wbindone,a2
 	bra	DumpHexLong
 .wbindone:
 
 
 	;-------------  binary to serial
+
 	lea	SpacesTxt,a0				; Prints text "Write:"
 	lea	.tststart,a1
 	bra	DumpSerial
 .tststart:
 	btst	#6,$bfe001
 	beq	.tstlmb
+	lea	.tstlmb,a3
+
+
+
 
 	move.l	(a5),d1
 	move.l	d2,a0
@@ -795,6 +1001,7 @@ POSTDetectChipmem:
 .tstzero:
 	move.b	#"0",d7
 .tstout:
+
 	move.w	#$4000,$dff09a
 	move.w	#373,$dff032			; Set the speed of the serialport (9600BPS)
 	move.b	#$4f,$bfd000			; Set DTR high
@@ -831,7 +1038,7 @@ POSTDetectChipmem:
 .rtxtdone:
 
 	move.l	d4,d1
-	lea	.rbindone,a3
+	lea	.rbindone,a2
 	bra	DumpHexLong
 .rbindone:
 
@@ -844,46 +1051,121 @@ POSTDetectChipmem:
 	beq	.tstlmb1
 
 	move.l	d4,d1
+
 	move.l	d2,a0
 	move.l	d3,a1
 	move.l	d4,a2
 	move.l	d7,a3
+	move.l	(a5),d2				; D2 now also contain the longword we want to compare against
+
+
+
 	move.l	#31,d3
+
 .tstloop1:
+	move.b	#27,d7
+	lea	.aa1,a7
+	bra	DumpSerialChar2
+.aa1:
+	move.b	#"[",d7
+	lea	.aa2,a7
+	bra	DumpSerialChar2
+.aa2:
+	move.b	#"3",d7
+	lea	.aa3,a7
+	bra	DumpSerialChar2
+.aa3:
+
+
 	clr.l	d7
+
+	btst	d3,d2				; check what value it was for the written data
+	beq	.waszero
+	move.b	#1,d7				; set d7 to 1 as it was 1
+	bra	.wasone
+.waszero:
+
+	move.b	#0,d7				; set d7 to 0 as it was 0
+.wasone:
 	btst	d3,d1
 	beq	.tstzero1
-	move.b	#"1",d7
+
+	cmp.b	#1,d7				; check if it was 1 written if not.. make sure it written in red, other green
+	bne	.not1
+
+
+
+	move.b	#"2",d7					; 1 red    2 green
+	lea	.aa4,a7
+	bra	DumpSerialChar2
+.aa4:
+	move.b	#"m",d7
+	lea	.wasnt1,a7
+	bra	DumpSerialChar2
+
+.not1:
+
+	move.b	#"1",d7					; 1 red    2 green
+	lea	.aa6,a7
+	bra	DumpSerialChar2
+.aa6:
+	move.b	#"m",d7
+	lea	.wasnt1,a7
+	bra	DumpSerialChar2
+
+.wasnt1:
+
+	move.l	#"1",d7
 	bra	.tstout1
 .tstzero1:
-	move.b	#"0",d7
+	cmp.b	#0,d7
+	bne	.not00
+
+	move.b	#"2",d7					; 1 red    2 green
+	lea	.aa8,a7
+	bra	DumpSerialChar2
+.aa8:
+	move.b	#"m",d7
+	lea	.aa9,a7
+	bra	DumpSerialChar2
+.aa9:
+	bra	.not0
+
+
+.not00:
+
+	move.b	#"1",d7					; 1 red    2 green
+	lea	.aa10,a7
+	bra	DumpSerialChar2
+.aa10:
+	move.b	#"m",d7
+	lea	.aa11,a7
+	bra	DumpSerialChar2
+.aa11:
+
+
+.not0:
+	move.l	#"0",d7
+
+
+
+
+
 .tstout1:
-	move.w	#$4000,$dff09a
-	move.w	#373,$dff032			; Set the speed of the serialport (9600BPS)
-	move.b	#$4f,$bfd000			; Set DTR high
-	move.w	#$0801,$dff09a
-	move.w	#$0801,$dff09c
-	move.l	#40000,d2			; Load d2 with a timeoutvariable. only test this number of times.
-						; IF CIA for serialport is dead we will not end up in a wait-forever-loop.
-						; and as we cannot use timers. we have to do this dirty style of coding...
-.tsttimeoutloop1:	
-	move.b	$bfe001,d4			; just read crapdata, we do not care but reading from CIA is slow... for timeout stuff only
-	sub.l	#1,d2				; count down timeout value
-	cmp.l	#0,d2				; if 0, timeout.
-	beq	.tstendloop1
-	move.w	$dff018,d4
-	btst	#13,d4				; Check TBE bit
-	beq.s	.tsttimeoutloop1
-.tstendloop1:
-	move.w	#$0100,d4
-	move.b	d7,d4
-	move.w	d4,$dff030			; send it to serial
-	move.w	#$0001,$dff09c			; turn off the TBE bit
+
+	lea	.Numberprinted,a7
+	bra	DumpSerialChar2
+.Numberprinted:
+
 	dbf	d3,.tstloop1
+
+
 	move.l	a0,d2
 	move.l	a1,d3
 	move.l	a2,d4
 	move.l	a3,d7
+
+
 .tstlmb1:
 	;-------------  end of binary to serial
 
@@ -967,7 +1249,7 @@ POSTDetectChipmem:
 .startaddrdone:
 	move.l	d3,a7				; Store start of chipmem to a7
 	move.l	d3,d1
-	lea	.startdone,a3
+	lea	.startdone,a2
 	bra	DumpHexLong
 .startdone:
 
@@ -978,7 +1260,7 @@ POSTDetectChipmem:
 	sub.l	#$400,a6
 	move.l	a6,d1
 	sub.l	#1,d1
-	lea	.enddone,a3
+	lea	.enddone,a2
 	bra	DumpHexLong
 .enddone:
 	lea	NewLineTxt,a0
@@ -998,6 +1280,45 @@ POSTDetectChipmem:
 					; D3 = First usable address
 					; A6 = Last usable address
 
+
+					; A3 not used yet
+
+
+
+	move.w	#$0,$dff180		; Set backgroundcolor to black
+
+	swap 	d0
+	clr.w	d0			; make sure upper word is 0
+	swap	d0
+
+	move.l	#-2,d1
+	move.l	#-2,d2
+	move.l	#-2,d4
+	move.l	#-2,d5
+	move.l	#-2,d6
+	move.l	#-2,d7
+	lea	-2,a0
+	lea	-2,a1
+	lea	-2,a2
+	lea	-2,a3
+	lea	-2,a5
+	lea	-2,a7			; ok clear "unused" registers that can be scrapped now.  only for debugging..
+
+
+;---------------------------------------------------------------------------------------------------------------------------------------------
+;---------------------------------------------------------------------------------------------------------------------------------------------
+;---------------------------------------------------------------------------------------------------------------------------------------------
+;---------------------------------------------------------------------------------------------------------------------------------------------
+;---------------------------------------------------------------------------------------------------------------------------------------------
+;---------------------------------------------------------------------------------------------------------------------------------------------
+;---------------------------------------------------------------------------------------------------------------------------------------------
+;---------------------------------------------------------------------------------------------------------------------------------------------
+
+
+
+
+
+	
 	
 ;----------- Chipmemtest done
 
@@ -1106,7 +1427,7 @@ POSTDetectChipmem:
 	bra	DumpSerial
 .det11:
 	move.l	d5,d1
-	lea	.det12,a3
+	lea	.det12,a2
 	bra	DumpHexLong
 .det12:
 	lea	MinusDTxt,a0
@@ -1114,7 +1435,7 @@ POSTDetectChipmem:
 	bra	DumpSerial
 .det13:
 	move.l	d4,d1
-	lea	.det14,a3
+	lea	.det14,a2
 	bra	DumpHexLong
 .det14:
 	lea	NewLineTxt,a0
@@ -1157,7 +1478,7 @@ POSTDetectChipmem:
 	bra	DumpSerial
 .det21:
 	move.l	d5,d1
-	lea	.det22,a3
+	lea	.det22,a2
 	bra	DumpHexLong
 .det22:
 	lea	MinusDTxt,a0
@@ -1165,7 +1486,7 @@ POSTDetectChipmem:
 	bra	DumpSerial
 .det23:
 	move.l	d4,d1
-	lea	.det24,a3
+	lea	.det24,a2
 	bra	DumpHexLong
 .det24:
 	lea	NewLineTxt,a0
@@ -1207,7 +1528,7 @@ POSTDetectChipmem:
 	bra	DumpSerial
 .det31:
 	move.l	d5,d1
-	lea	.det32,a3
+	lea	.det32,a2
 	bra	DumpHexLong
 .det32:
 	lea	MinusDTxt,a0
@@ -1215,7 +1536,7 @@ POSTDetectChipmem:
 	bra	DumpSerial
 .det33:
 	move.l	d4,d1
-	lea	.det34,a3
+	lea	.det34,a2
 	bra	DumpHexLong
 .det34:
 	lea	NewLineTxt,a0
@@ -1258,7 +1579,7 @@ POSTDetectChipmem:
 	bra	DumpSerial
 .det41:
 	move.l	d5,d1
-	lea	.det42,a3
+	lea	.det42,a2
 	bra	DumpHexLong
 .det42:
 	lea	MinusDTxt,a0
@@ -1266,7 +1587,7 @@ POSTDetectChipmem:
 	bra	DumpSerial
 .det43:
 	move.l	d4,d1
-	lea	.det44,a3
+	lea	.det44,a2
 	bra	DumpHexLong
 .det44:
 	lea	NewLineTxt,a0
@@ -1310,7 +1631,7 @@ POSTDetectChipmem:
 	bra	DumpSerial
 .det51:
 	move.l	d5,d1
-	lea	.det52,a3
+	lea	.det52,a2
 	bra	DumpHexLong
 .det52:
 	lea	MinusDTxt,a0
@@ -1318,7 +1639,7 @@ POSTDetectChipmem:
 	bra	DumpSerial
 .det53:
 	move.l	d4,d1
-	lea	.det54,a3
+	lea	.det54,a2
 	bra	DumpHexLong
 .det54:
 	lea	NewLineTxt,a0
@@ -1495,7 +1816,7 @@ startcode:
 	bra	DumpSerial
 .base1:
 	move.l	a6,d1
-	lea	.base2,a3
+	lea	.base2,a2
 	bra	DumpHexLong
 .base2:
 	lea	Base2Txt,a0
@@ -1726,8 +2047,11 @@ ERRORHALT2:
 						; "real" code starts here.  we got detected memory etc.
 
 code:
+	move.l	a7,d3			; Copy start of chipmem (temporary stored in a7) do d3
 
-;	move.l	a7,d3			; Copy start of chipmem (temporary stored in a7) do d3
+
+
+
 
 	move.l	a6,a7
 	move.l	#Endstack-Variables,d6	; set d6 to the stacksize	
@@ -1779,6 +2103,7 @@ code:
 
 
 		else
+
 ; Code in NON-ROM mode
 code:
 
@@ -1844,8 +2169,41 @@ code:
 
 
 					; Before we actually do start, lets clear all used memory
+TheCode:
+						; D0 = Number of 32k chipmemblocks found
+						; D1 = total of fastmemblocks
+
+							; A6 = Basemem found (workmem)
+							; A4 = controlregister
+
+;	HALT
+
+;	bra	TheCode
 
 
+;	clr.l	d0
+	clr.l	d1
+;	move.l	#300,d1
+	clr.l	d2
+;	clr.l	d3
+	clr.l	d4
+	clr.l	d5
+	clr.l	d6
+	clr.l	d7
+	move.l	#-1,d7
+	lea	$0,a0
+	lea	$0,a1
+	lea	$0,a2
+	lea	$0,a3
+;	lea	$0,a4
+	lea	$0,a5
+;	lea	$0,a6
+
+
+
+
+
+;.noserialturnoff:
 
 	move.l	a6,a0
 	move.l	a6,d2
@@ -1871,7 +2229,12 @@ code:
 
 	move.l	a4,d7
 
+
+
 	move.l	d7,PowerONStatus-V(a6)	; Save the Poweronstatus. buttons etc
+
+; Bits  0=P1LMB, 1=P2LMB, 2=P1RMB, 3=P2RMB, 4=P1MMB, 5=P2MMB, 6=NODRAW, 7=NOSERIAL, 8=OVL ERROR, 9=LOOPBACK
+
 
 	btst	#0,d7
 	beq	.NOP1LMB
@@ -1897,7 +2260,7 @@ code:
 	bne	.NOP2RMB
 	move.b	#1,STUCKP2RMB-V(a6)
 .NOP2RMB:
-	btst	#5,d7			; Check if we had OVL error
+	btst	#8,d7			; Check if we had OVL error
 	bne	.OVLError
 	move.b	#0,OVLErr-V(a6)
 	bra	.noOVLError
@@ -1915,11 +2278,13 @@ code:
 	move.b	#1,NoDraw-V(a6)
 
 .notset:
-	move.b	#0,NoSerial-V(a6)
-	btst	#1,d7			; Check if noserial is to be set
-	beq	.notset2
 
-;	move.b	#1,NoSerial-V(a6)	; set it
+	move.b	#0,NoSerial-V(a6)
+
+	btst	#7,d7			; Check if noserial is to be set
+	beq	.notset2
+	move.b	#1,NoSerial-V(a6)	; set it
+
 .notset2:
 	move.b	#0,LoopB-V(a6)
 
@@ -1949,7 +2314,7 @@ code:
 	move.l	ChipStart-V(a6),d1	; Get startaddress of chipmem
 	move.l	TotalChip-V(a6),d0	; Get total of chipmemblocks detected
 	mulu	#1024,d0
-	sub.l	#$400,d0		; Subtract first 1Kb
+	sub.l	#$401,d0		; Subtract first 1Kb
 	add.l	d1,d0			; add Startaddess of chipmem, so d0 now contains last memaddress
 
 	move.l	d0,ChipEnd-V(a6)	; Write lastchipmemaddress into EndChip
@@ -1959,7 +2324,6 @@ code:
 ;---------------------------------- This is more or less where it all starts and a system is up and running
 
 	bset	#1,$bfe001
-
 
 	lea	LoopSerTest,a0
 	lea	.dirtyjump,a1		; TECHNICALLY we do not need to do this dirty thing anymore, but just to
@@ -4680,7 +5044,7 @@ UpdateStatus:
 
 
 MainMenu:
-	bsr	FilterON
+	jsr	FilterON
 	bsr	ClearScreen			; Clear the screen
 	bsr	PrintStatus			; Print the statusline
 	bsr	UpdateStatus			; Update "static" data of statusline
@@ -4707,7 +5071,7 @@ InitScreen:
 
 DumpClearSerial:				; Just read serialport, to empty it, this is pre-memory, so no return.
 						; a0 contains jumpaddress where to go after exiting
-	move.l	#1,d6				; load d6 with 1, so we run this, twice to be sure serialbuffer is cleared
+	move.l	#1,d1				; load d6 with 1, so we run this, twice to be sure serialbuffer is cleared
 .loop:
 	move.w	#$4000,$dff09a
 	move.w	#373,$dff032			; Set the speed of the serialport (9600BPS)
@@ -4725,41 +5089,65 @@ DumpClearSerial:				; Just read serialport, to empty it, this is pre-memory, so 
 	btst	#14,d0				; Buffer full, we have a new char
 	beq	.timeoutloop2
 .exitloop:
-	dbf	d6,.loop
+	dbf	d1,.loop
 	jmp	(a0)				; Jump to a0
 
 
 
-DumpSerial:				; This is only for PRE-Memory usage. Dumps a string to serialport.
+
+DumpSerialChar2:
+	move.w	#$4000,$dff09a
+	move.w	#373,$dff032			; Set the speed of the serialport (9600BPS)
+	move.b	#$4f,$bfd000			; Set DTR high
+	move.w	#$0801,$dff09a
+	move.w	#$0801,$dff09c
+	swap	d7				; Lets save registers..  d7 is only 16 bit. so lets use both halves
+	move.w	#40000,d7			; Load d2 (ehm.. d7)  with a timeoutvariable. only test this number of times.
+						; IF CIA for serialport is dead we will not end up in a wait-forever-loop.
+						; and as we cannot use timers. we have to do this dirty style of coding...
+.tsttimeoutloop1:	
+	move.b	$bfe001,d4			; just read crapdata, we do not care but reading from CIA is slow... for timeout stuff only
+	sub.w	#1,d7				; count down timeout value
+	cmp.w	#0,d7				; if 0, timeout.
+	beq	.tstendloop1
+	move.w	$dff018,d4
+	btst	#13,d4				; Check TBE bit
+	beq.s	.tsttimeoutloop1
+.tstendloop1:
+	swap	d7				; swap back.  and we used d7 as bth the old "d7" variable and d2 in old routine. so d2 can be used to other stuff
+	move.w	#$0100,d4
+	move.b	d7,d4
+	move.w	d4,$dff030			; send it to serial
+	move.w	#$0001,$dff09c			; turn off the TBE bit
+	jmp	(a7)
+
+DumpSerial:
+					; This is only for PRE-Memory usage. Dumps a string to serialport.
 					; IN:
 					; a0 = String to put out on serial port.
 					; a1 = where to jump after code is run. Remember we have NO stack
 					; meaning that there is no place to store returnadresses for bsr/jsr
 
-	btst	#6,$bfe001			; Check if left mousebutton is pressed
-	beq	.exit				; if so.. we skip printing on serial port
-
 
 	move.l	a4,d7				; Copy the value in A4 (temporary data of mousebutttons pressed) to d7
-	btst	#1,d7				; check if LMB on Joyport 1 was pressed. if so. skip serial output.
-;	bne	.exit				; it was pressed. skip all this
-;.ignore:
-	btst	#4,d7				; Check if we had loopback installed
-	bne	.nomore
+	btst	#7,d7				; Check if serial should be disabled
+	bne	.exit				; if so, exit this
+
+
 	move.w	#$4000,$dff09a
 	move.w	#373,$dff032			; Set the speed of the serialport (9600BPS)
 	move.b	#$4f,$bfd000			; Set DTR high
 	move.w	#$0801,$dff09a
 	move.w	#$0801,$dff09c
 
-	clr.l	d7				; Clear d0
+	clr.l	d7				; Clear d7
 .loop:
 	move.b	(a0)+,d7
 	cmp.b	#0,d7				; end of string?
 	beq	.nomore				; yes
 
 	move.l	#40000,d2			; Load d2 with a timeoutvariable. only test this number of times.
-						; IF CIA for serialport is dead we will not end up in a wait-forever-loop.
+						; if paula cannot tell if serial is output we will not end up in a wait-forever-loop.
 						; and as we cannot use timers. we have to do this dirty style of coding...
 .timeoutloop:	
 	move.b	$bfe001,d1			; just read crapdata, we do not care but reading from CIA is slow... for timeout stuff only
@@ -4769,7 +5157,28 @@ DumpSerial:				; This is only for PRE-Memory usage. Dumps a string to serialport
 	move.w	$dff018,d1
 	btst	#13,d1				; Check TBE bit
 	beq.s	.timeoutloop
+	bra	.notimeout
+	
 .endloop:
+
+	move.l	a4,d2
+	swap	d2
+	add.w	#1,d2
+	cmp.w	#70,d2				; If we had enough timeouts, lets cancel serial output
+	blt	.notenough
+
+	move.w	#$fff,$dff180
+	swap	d2
+	bset	#7,d2
+	bra	.enough
+.notenough:
+	swap	d2
+.enough
+
+	move.l	d2,a4				; We had a timeout. add 1 to higher word of A4 to show counter of timeouts
+
+	clr.l	d2
+.notimeout:
 	move.w	#$0100,d1
 	move.b	d7,d1
 	move.w	d1,$dff030			; send it to serial
@@ -4781,23 +5190,15 @@ DumpSerial:				; This is only for PRE-Memory usage. Dumps a string to serialport
 .nomore:
 						; ok apparentlty fire on port1 was pressed. if port0 was also pressed. we assume bad CIA and ignore
 	btst	#0,d7
-;	bne	.ignore
 	bra	.exit
 
-DumpSerialChar:				; This is only for PRE-Memory usage. Dumps a string to serialport.
-					; IN:
-					; a0 = pointer to char to print
-					; a1 = where to jump after code is run. Remember we have NO stack
-					; meaning that there is no place to store returnadresses for bsr/jsr
 
-;	move.l	a4,d7				; Copy the value in A4 (temporary data of mousebutttons pressed) to d7
-;	btst	#1,d7				; check if LMB on Joyport 1 was pressed. if so. skip serial output.
-;	bne	.nomore				; it was pressed. skip all this
-;	btst	#4,d7				; Check if we had loopback installed
-;	bne	.nomore
+DumpSerialChar:
 
-	btst	#6,$bfe001
-	beq	.nomore
+	move.l	a4,d7				; Copy the value in A4 (temporary data of mousebutttons pressed) to d7
+	btst	#7,d7				; Check if serial should be disabled
+	bne	.exit				; if so, exit this
+
 
 	move.w	#$4000,$dff09a
 	move.w	#373,$dff032			; Set the speed of the serialport (9600BPS)
@@ -4805,10 +5206,12 @@ DumpSerialChar:				; This is only for PRE-Memory usage. Dumps a string to serial
 	move.w	#$0801,$dff09a
 	move.w	#$0801,$dff09c
 
-	clr.l	d7				; Clear d0
+	clr.l	d7				; Clear d7
+.loop:
 	move.b	(a0)+,d7
-	move.l	#10000,d2			; Load d2 with a timeoutvariable. only test this number of times.
-						; IF CIA for serialport is dead we will not end up in a wait-forever-loop.
+
+	move.l	#40000,d2			; Load d2 with a timeoutvariable. only test this number of times.
+						; if paula cannot tell if serial is output we will not end up in a wait-forever-loop.
 						; and as we cannot use timers. we have to do this dirty style of coding...
 .timeoutloop:	
 	move.b	$bfe001,d1			; just read crapdata, we do not care but reading from CIA is slow... for timeout stuff only
@@ -4818,13 +5221,174 @@ DumpSerialChar:				; This is only for PRE-Memory usage. Dumps a string to serial
 	move.w	$dff018,d1
 	btst	#13,d1				; Check TBE bit
 	beq.s	.timeoutloop
+	bra	.notimeout
+	
 .endloop:
+
+	move.l	a4,d2
+	swap	d2
+	add.w	#1,d2
+	cmp.w	#100,d2				; If we had enough timeouts, lets cancel serial output
+	blt	.notenough
+
+	move.w	#$fff,$dff180
+	swap	d2
+	bset	#7,d2
+	bra	.enough
+.notenough:
+	swap	d2
+.enough
+
+	move.l	d2,a4				; We had a timeout. add 1 to higher word of A4 to show counter of timeouts
+
+	clr.l	d2
+.notimeout:
 	move.w	#$0100,d1
 	move.b	d7,d1
 	move.w	d1,$dff030			; send it to serial
 	move.w	#$0001,$dff09c			; turn off the TBE bit
-.nomore:
+.exit:
 	jmp	(a1)				; AS we cannot use RTS (and bsr/jsr) jump here after we are done.
+
+
+
+DumpSerialCharacter:				; Same as above. except that char is in D1
+
+	move.l	a4,d7				; Copy the value in A4 (temporary data of mousebutttons pressed) to d7
+	btst	#7,d7				; Check if serial should be disabled
+	bne	.exit				; if so, exit this
+
+
+	move.w	d1,d7
+	move.w	#$4000,$dff09a
+	move.w	#373,$dff032			; Set the speed of the serialport (9600BPS)
+	move.b	#$4f,$bfd000			; Set DTR high
+	move.w	#$0801,$dff09a
+	move.w	#$0801,$dff09c
+	swap	d7				; Lets save registers. using d7 for both chardata and timeoutloop
+
+.loop:
+	move.w	#40000,d7			; Load d7 with a timeoutvariable. only test this number of times.
+						; if paula cannot tell if serial is output we will not end up in a wait-forever-loop.
+						; and as we cannot use timers. we have to do this dirty style of coding...
+.timeoutloop:	
+	move.b	$bfe001,d1			; just read crapdata, we do not care but reading from CIA is slow... for timeout stuff only
+	sub.w	#1,d7				; count down timeout value
+	cmp.w	#0,d7				; if 0, timeout.
+	beq	.endloop
+	move.w	$dff018,d1
+	btst	#13,d1				; Check TBE bit
+	beq.s	.timeoutloop
+	bra	.notimeout
+	
+.endloop:
+	swap	d7
+	
+	move.l	a4,d1
+	swap	d1
+	add.w	#1,d1
+	cmp.w	#100,d1				; If we had enough timeouts, lets cancel serial output
+	blt	.notenough
+
+	move.w	#$fff,$dff180
+	swap	d1
+	bset	#7,d1
+	bra	.enough
+.notenough:
+	swap	d1
+.enough
+
+	move.l	d1,a4				; We had a timeout. add 1 to higher word of A4 to show counter of timeouts
+
+.notimeout:
+	move.w	#$0100,d1
+	swap	d7
+	move.b	d7,d1
+	move.w	d1,$dff030			; send it to serial
+	move.w	#$0001,$dff09c			; turn off the TBE bit
+.exit:
+	jmp	(a1)				; AS we cannot use RTS (and bsr/jsr) jump here after we are done.
+
+
+
+
+
+DumpBinSerial:				; Dumps value in D1 as binary to serialport
+
+					; A3 is jumppointer for exit
+
+	move.l	d1,d5
+
+	move.l	#31,d6
+
+.loop:
+	btst	d6,d5
+	beq	.notset
+	move.l	#"1",d1
+	lea	.charprinted,a1
+	bsr	DumpSerialCharacter
+.notset:
+	move.l	#"0",d1
+	lea	.charprinted,a1
+	bsr	DumpSerialCharacter
+.charprinted:
+
+	dbf	d6,.loop
+	jmp	(a3)
+
+
+
+
+
+
+
+oldcrapanddelete:
+	move.l	d2,a0
+	move.l	d3,a1
+	move.l	d4,a2
+	move.l	d7,a3
+
+
+
+	move.l	#31,d3
+.tstloop1:
+	clr.l	d7
+	btst	d3,d1
+	beq	.tstzero1
+	move.b	#"1",d7
+	bra	.tstout1
+.tstzero1:
+	move.b	#"0",d7
+.tstout1:
+	move.w	#$4000,$dff09a
+	move.w	#373,$dff032			; Set the speed of the serialport (9600BPS)
+	move.b	#$4f,$bfd000			; Set DTR high
+	move.w	#$0801,$dff09a
+	move.w	#$0801,$dff09c
+	move.l	#40000,d2			; Load d2 with a timeoutvariable. only test this number of times.
+						; IF CIA for serialport is dead we will not end up in a wait-forever-loop.
+						; and as we cannot use timers. we have to do this dirty style of coding...
+.tsttimeoutloop1:	
+	move.b	$bfe001,d4			; just read crapdata, we do not care but reading from CIA is slow... for timeout stuff only
+	sub.l	#1,d2				; count down timeout value
+	cmp.l	#0,d2				; if 0, timeout.
+	beq	.tstendloop1
+	move.w	$dff018,d4
+	btst	#13,d4				; Check TBE bit
+	beq.s	.tsttimeoutloop1
+.tstendloop1:
+	move.w	#$0100,d4
+	move.b	d7,d4
+	move.w	d4,$dff030			; send it to serial
+	move.w	#$0001,$dff09c			; turn off the TBE bit
+	dbf	d3,.tstloop1
+
+
+	move.l	a0,d2
+	move.l	a1,d3
+	move.l	a2,d4
+	move.l	a3,d7
+	jmp	(a7)
 
 
 DumpHexLong:
@@ -4833,24 +5397,60 @@ DumpHexLong:
 	move.l	d1,d6
 	swap	d1
 	asr.l	#8,d1
-	lea	.byte1,a2
-	bra	DumpHexByte
+
+	lea	bytehextxt,a0
+	clr.l	d2
+	move.b	d1,d2
+	asl	#1,d2
+	add.l	d2,a0
+	lea	.byte1char,a1
+	bra	DumpSerialChar
+.byte1char:
+	lea	.byte1,a1
+	bra	DumpSerialChar
+
 .byte1:
+
 	move.l	d6,d1
 	swap	d1
-	lea	.byte2,a2
-	bra	DumpHexByte
+	lea	bytehextxt,a0
+	clr.l	d2
+	move.b	d1,d2
+	asl	#1,d2
+	add.l	d2,a0
+	lea	.byte2char,a1
+	bra	DumpSerialChar
+.byte2char:
+	lea	.byte2,a1
+	bra	DumpSerialChar
 .byte2:
 	move.l	d6,d1
 	asr	#8,d1
-	lea	.byte3,a2
-	bra	DumpHexByte		
+	lea	bytehextxt,a0
+	clr.l	d2
+	move.b	d1,d2
+	asl	#1,d2
+	add.l	d2,a0
+	lea	.byte3char,a1
+	bra	DumpSerialChar
+.byte3char:
+	lea	.byte3,a1
+	bra	DumpSerialChar
 .byte3:
 	move.l	d6,d1
-	lea	.byte4,a2
-	bra	DumpHexByte
+	lea	bytehextxt,a0
+	clr.l	d2
+	move.b	d1,d2
+	asl	#1,d2
+	add.l	d2,a0
+	lea	.byte4char,a1
+	bra	DumpSerialChar
+.byte4char:
+	lea	.byte4,a1
+	bra	DumpSerialChar
 .byte4:
-	jmp	(a3)
+	jmp	(a2)
+
 
 DefaultVars:					; Set defualtvalues
 	move.l	a6,d0
@@ -4865,7 +5465,6 @@ DumpHexByte:				; PRE MEM-CODE!  dumps content of BYTE in d1 to serialport-
 					; INDATA:
 					;	D1 = byte to print
 					;	A2 = address to jump after done
-
 	lea	bytehextxt,a0
 	clr.l	d2
 	move.b	d1,d2
@@ -11125,9 +11724,13 @@ Loopbacktest:					; Test if we have a loopbackadapter connected.
 	cmp.l	#0,d7				; if 0, timeout.
 	beq	.endloop
 	move.w	$dff018,d0
+
 	btst	#13,d0				; Check TBE bit
 	beq.s	.timeoutloop			; Loop until all is ok to send or until timeout hits
 .endloop:
+
+
+
 
 	move.w	#$0100,d1
 	move.b	d2,d1
@@ -13726,7 +14329,7 @@ DiskdriveTest:
 	move.l	#4,d1
 	bsr	Print
 .exloop:
-	bsr	GetInput
+	jsr	GetInput
 	cmp.b	#0,BUTTON-V(a6)
 	beq	.exloop
 
@@ -14644,26 +15247,26 @@ DebugScreen:					; This dumps out registers..
 	beq	.endloop
 
 	lea	NewLineTxt,a0
-	bsr	Print
+	jsr	Print
 	lea	DebugIRQ,a0
 	move.l	#3,d1
-	bsr	Print
+	jsr	Print
 
 	move.l	d7,d0
 	bsr	bindec
 	move.l	#3,d1
-	bsr	Print
+	jsr	Print
 
 	lea	DebugIRQPoint,a0
-	bsr	Print
+	jsr	Print
 
 	move.l	(a5),d0				; Get where IRQ points to
 	move.l	d0,a4				; Store a copy of it in A4, to be able to print content
 	bsr	binhex
-	bsr	Print
+	jsr	Print
 
 	lea	DebugContent,a0
-	bsr	Print
+	jsr	Print
 
 	move.l	#15,d6
 	clr.l	d5
@@ -14671,12 +15274,12 @@ DebugScreen:					; This dumps out registers..
 	clr.l	d0
 	move.b	(a4)+,d0
 	bsr	binhexbyte
-	bsr	Print
+	jsr	Print
 	add.b	#1,d5
 	cmp.b	#4,d5				; 4th byte?
 	bne	.not4
 	move.b	#" ",d0
-	bsr	PrintChar
+	jsr	PrintChar
 	clr.l	d5
 .not4:
 	dbf	d6,.contentloop
@@ -14686,42 +15289,42 @@ DebugScreen:					; This dumps out registers..
 .endloop:
 
 	lea	NewLineTxt,a0
-	bsr	Print
+	jsr	Print
 	lea	NewLineTxt,a0
-	bsr	Print
+	jsr	Print
 	lea	DebugROM,a0
-	bsr	Print
+	jsr	Print
 
 	cmp.w	#$1114,$0
 	bne	.no1114at0
 	lea	YES,a0
 	move.l	#1,d1
-	bsr	Print
+	jsr	Print
 	bra	.yes1114at0
 
 .no1114at0:
 	lea	NO,a0
 	move.l	#2,d1
-	bsr	Print
+	jsr	Print
 .yes1114at0
 
 	lea	NewLineTxt,a0
-	bsr	Print
+	jsr	Print
 	lea	DebugROM2,a0
 	move.l	#3,d1
-	bsr	Print
+	jsr	Print
 
 	cmp.w	#$1114,$f80000
 	bne	.no1114atf8
 	lea	YES,a0
 	move.l	#2,d1
-	bsr	Print
+	jsr	Print
 	bra	.yes1114atf8
 
 .no1114atf8:
 	lea	NO,a0
 	move.l	#1,d1
-	bsr	Print
+	jsr	Print
 .yes1114atf8:
 
 ;	move.w	SR,d0
@@ -14914,7 +15517,7 @@ InputHexNum:					; Inputs a 32 bit hexnumber
 	move.b	Ypos-V(a6),CheckMemManualY-V(a6); Store X and Y positions
 
 	move.l	a0,d0				; Store the defaultaddress in d0
-	bsr	binhex				; Convert it to hex
+	jsr	binhex				; Convert it to hex
 	add.l	#1,a0				; Skip first $ sign in string
 	move.l	#8,d0
 	lea	CheckMemStartAdrTxt-V(a6),a1	; Clear workspace
@@ -16725,6 +17328,13 @@ par81txt:
 HALTTXT:
 	dc.b	"- NO MEMORY FOUND - HALTING SYSTEM",0
 
+RomAdrtest:
+	dc.b	"- Testing ROM Address-access",$a,$d,0
+RomAdrErr:
+	dc.b	$a,$d,"   - Addresserror at: ",0
+RomAdrErrors:
+	dc.b	$a,$d,27,"[31m  --  Addresserrr reading ROM, memoryhandling etc might be corrupt",$a,$d
+	dc.b	27,"[0m",0
 
 writeffff:
 	dc.b	"  - Test of writing word $FFFF to $400 ",0
@@ -16769,9 +17379,7 @@ OvlTestTxt:
 	dc.b	$a,$d,"Testing if OVL is working: ",0
 
 InitSerial:
-	dc.b	1,2,4,8,16,32,64,128,240,15,170,85,$a,$d,$a,$d
-	dc.b	"Garbage before this text was binary numbers: 1, 2, 4, 8, 16, 32, 64, 128, 240, 15, 170 and 85",$a,$d
-	dc.b	"To help you find biterrors to paula. Now starting normal startuptext etc",$a,$d
+	dc.b	$a,$d
 	dc.b	12,27,"[0m"
 InitTxt:
 	dc.b	"Amiga DiagROM "
@@ -17751,6 +18359,8 @@ IDEBlkSize:
 	dc.b	" Blocksize: ",0
 IDEUnitTxt:
 	dc.b	"Unitname: ",0
+Divider2Txt:
+	dc.b	$a,$d
 DividerTxt:
 	dc.b	"--------------------------------------------------------------------------------",0
 EmptyRowTxt:
@@ -18057,8 +18667,8 @@ EndChecksums:
 
 EndMusic:
 	dc.b	"This is the brutal end of this ROM, everything after this are just pure noise.    End of Code...",0
-
-
+EndOfCode:
+	EVEN
 
 EndRom:
 	ifne	rommode
@@ -18068,6 +18678,10 @@ EndRom:
 		else
 	blk.b	$10000-(EndRom-START)-16,0		; Crapdata that needs to be here
 		endc
+IRQDATA:
+DefBaud:	dc.l	DB
+DB:
+	dc.w	373					; Default baudrate  373 (9600 BPS)
 	dc.l	$00180019,$001a001b,$001c001d,$001e001f	; or IRQ will TOTALLY screw up on machines with 68000-68010
 
 	endc
@@ -18749,7 +19363,7 @@ ptplay:
 
 	EVEN
 
-
+	dc.b	"THEEND"
 EndData:
 	dc.l	0
 
@@ -18823,10 +19437,9 @@ SaveTrap15:
 SaveTrap16:
 	dc.l	0
 
-
-
 graph:
 	dc.b	"graphics.library",0
 	even
 SLASK:
 	dc.l	0
+	
