@@ -1,4 +1,4 @@
-;APS0000002F0000002F00032F6100033912000339120003391200033912000339120003391200033912
+;APS0000002F0000002F00033A7C0003442D0003442D0003442D0003442D0003442D0003442D0003442D
 ;
 ; DiagROM by John "Chucky" Hertell
 ;
@@ -401,6 +401,7 @@ Begin:
 
 .romadr2:
 	move.b	$dff006,$dff180
+	TOGGLEPWRLED
 
 	move.l	a5,d1
 	lea	.aab,a2
@@ -442,7 +443,6 @@ Begin:
 	bra	DumpSerial
 
 .adrdone:
-
 
 	move.l	#-1,d0			; ok we have went through that .. lets set all unused registers to -1 again to keep track of em
 	move.l	#-1,d1
@@ -528,7 +528,7 @@ Begin:
 
 .goon:
 
-	move.l	a4,$4			; KUK  uh  why?
+	move.l	a4,$4
 
 
 	lea	Initmousetxt,a0
@@ -893,9 +893,7 @@ POSTDetectChipmem:
 
 	move.l	a6,d1
 	asr.l	#8,d1
-	and.w	#$0f0,d1
-	move.w	d1,$dff180			; Write data to screen as green only.
-
+	move.w	#$0f0,$dff180
 
 	TOGGLEPWRLED
 	lea	AddrTxt,a0			; Prints text "Addr $"
@@ -923,8 +921,6 @@ POSTDetectChipmem:
 	move.l	(a6),d4				; Read data from memory
 	move.l	(a6),d4				; Read data from memory
 	move.l	(a6),d4				; Read data from memory (read several times.. this will make sure it is real data)
-
-;	move.l	#$ffff0000,d4
 	cmp.l	(a5),d4				; Check if written data is the same as the read data.
 	beq	.ok				; YES it is OK
 
@@ -979,8 +975,8 @@ POSTDetectChipmem:
 	lea	.tststart,a1
 	bra	DumpSerial
 .tststart:
-	btst	#6,$bfe001
-	beq	.tstlmb
+;	btst	#6,$bfe001
+;	beq	.tstlmb
 	lea	.tstlmb,a3
 
 
@@ -1047,8 +1043,8 @@ POSTDetectChipmem:
 	lea	.tststart1,a1
 	bra	DumpSerial
 .tststart1:
-	btst	#6,$bfe001
-	beq	.tstlmb1
+;	btst	#6,$bfe001
+;	beq	.tstlmb1
 
 	move.l	d4,d1
 
@@ -1204,7 +1200,7 @@ POSTDetectChipmem:
 	lea	.okdone,a1
 	bra	DumpSerial
 .okdone:
-	lea	Txt32KBlock,a0			; Print string of number of blocks
+	lea	Txt64KBlock,a0			; Print string of number of blocks
 	lea	.blkdone,a1
 	bra	DumpSerial
 .blkdone:
@@ -1223,13 +1219,15 @@ POSTDetectChipmem:
 .longdone:
 	move.l	d5,(a6)				; Restore backupped data
 
-	add.l	#32768,a6			; Add 32k to a6
+	add.l	#65536,a6			; Add 64k to a6
 	cmp.l	#$200000,a6			; have we scanned more then 2MB of data, exit
 	bhi	.finished
 	bra	.detectloop			; Do one more turn.
 
 .shadow:
 	move.l	#"SHDW",(a6)			; to test that we REALLY have a shadowram. write a string
+	nop
+	nop
 	cmp.l	#"SHDW",$400			; and check it at $400,  if it is there aswell SHADOW
 	bne	.yes400				; go on checking ram. we did not have shadow
 
@@ -1242,6 +1240,9 @@ POSTDetectChipmem:
 	cmp.l	#0,d0				; check if we had no chipmem
 	beq	.nochipatall
 
+
+
+	move.w	#$0,$dff180			; Set backgroundcolor to black
 
 	lea	StartAddrTxt,a0
 	lea	.startaddrdone,a1
@@ -1276,7 +1277,7 @@ POSTDetectChipmem:
 .nl:
 
 					; At EXIT registers that are interesting:
-					; D0 = Number of usable 32Kb blocks
+					; D0 = Number of usable 64Kb blocks
 					; D3 = First usable address
 					; A6 = Last usable address
 
@@ -1285,24 +1286,135 @@ POSTDetectChipmem:
 
 
 
-	move.w	#$0,$dff180		; Set backgroundcolor to black
+
+
 
 	swap 	d0
 	clr.w	d0			; make sure upper word is 0
 	swap	d0
 
+
+
+tjolahoppsan:
+
+
+
+
+
+	lea	RamAdrTest,a0
+	lea	.ramadr,a1
+	bra	DumpSerial
+.ramadr
+	lea	RamAdrFill,a0
+	lea	.ramfill,a1
+	bra	DumpSerial
+.ramfill:
+
+
+	move.l	d3,a0
+.fillloop:
+	move.l	a0,(a0)+
+	cmp.l	a6,a0
+	blt	.fillloop		; Memory is filled with every longword containing its address.
+
+
+	lea	RamAdrComp,a0
+	lea	.ramcomp,a1
+	bra	DumpSerial
+.ramcomp:
+
+
 	move.l	#-2,d1
 	move.l	#-2,d2
 	move.l	#-2,d4
 	move.l	#-2,d5
-	move.l	#-2,d6
+;	move.l	#-2,d6
 	move.l	#-2,d7
 	lea	-2,a0
 	lea	-2,a1
 	lea	-2,a2
 	lea	-2,a3
 	lea	-2,a5
-	lea	-2,a7			; ok clear "unused" registers that can be scrapped now.  only for debugging..
+;	lea	-2,a7			; ok clear "unused" registers that can be scrapped now.  only for debugging..
+
+
+
+	move.l	d3,a5
+	move.l	a6,d4
+
+.AdrTest:
+	move.l	a5,a6
+
+	
+	move.l	(a5),d5			; load d5 with what was in the address
+;	move.l	#0,d0
+	move.l	a6,a5
+
+
+
+
+	cmp.l	a5,d5			; was is it the correct data?
+	beq	.ok
+
+
+	move.l	a4,d1
+	bset	#11,d1			; Set bit 11.. we had an addresserror
+	swap	d1
+	add.w	#1,d1
+	cmp.w	#200,d1
+	bgt	.adrtoomany
+	swap	d1
+	move.l	d1,a4
+
+	lea	RomAdrErr,a0
+	lea	.romadr2,a1
+	bra	DumpSerial
+
+.romadr2:
+	move.b	$dff006,$dff180
+	TOGGLEPWRLED
+
+	move.l	a5,d1
+	lea	.aab,a2
+	bra	DumpHexLong
+.aab:
+
+	lea	.afterspace,a1
+	move.l	#" ",d1
+	bsr	DumpSerialCharacter
+.afterspace:
+
+	move.l	a5,d1
+	lea	.ok,a3
+	bra	DumpBinSerial
+
+
+
+
+
+.ok:
+	move.w	#$000,$dff180
+	add.l	#4,a5
+	cmp.l	a3,d4
+	blt	.AdrTest
+	bra	.adrdoneok
+	
+.adrtoomany:
+	swap	d1
+	move.l	d1,a4
+.adrtoomany2:
+	clr.l	d0
+	lea	RamAdrErrors,a0
+	lea	.adrdone,a1
+	bra	DumpSerial
+
+.adrdoneok:
+
+	lea	CHIPOK,a0
+	lea	.adrdone,a1
+	bra	DumpSerial
+
+.adrdone:
 
 
 ;---------------------------------------------------------------------------------------------------------------------------------------------
@@ -1313,6 +1425,7 @@ POSTDetectChipmem:
 ;---------------------------------------------------------------------------------------------------------------------------------------------
 ;---------------------------------------------------------------------------------------------------------------------------------------------
 ;---------------------------------------------------------------------------------------------------------------------------------------------
+
 
 
 
@@ -1327,7 +1440,7 @@ POSTDetectChipmem:
 
 	move.l	a4,d1
 	btst	#0,d1				; Check if LMB was pressed, this means users asked for fastmem to be used, if found.
-	bne	.dofast
+	bne	.dofast2
 	move.l	d1,a4				; store it back to a4
 
 
@@ -1335,7 +1448,7 @@ POSTDetectChipmem:
 
 
 
-	cmp.l	#(EndData-Variables)/32768+1,d0
+	cmp.l	#(EndData-Variables)/65536+1,d0
 	bgt	.skipfasttest		; ok we had enough chipmem
 					; so we are not happy with the amount of found chipmem
 .dofast:
@@ -1345,10 +1458,18 @@ POSTDetectChipmem:
 	lea	parfctxt,a0		; And explaining simliar text to serialport.
 	lea	.jmp12,a1
 	bra	DumpSerial
-.jmp12:
 					; Lets detect fastmem, do NOT touch D0, A6 or A4
+.dofast2:
+
+
+	PAROUT	#$fc			; Send $fd to parallelport
+	lea	parfctxt2,a0		; And explaining simliar text to serialport.
+	lea	.jmp12,a1
+	bra	DumpSerial
+.jmp12:
 					; As we have several blocks to search. we do it in a subroutine instead of in-code as we did with chipmem
 					
+
 
 ;	move.l	d3,a7			; Store start of chipmem
 
@@ -1406,26 +1527,32 @@ POSTDetectChipmem:
 	eor.l	#$01110000,d0
 
 	move.w	#$003,$dff180
+
 	lea	$1000000,a1		; Detect motherboardmem on A3000/4000
 	lea	$8000000,a2
 
 	lea	.a3k4kdone,a3
 	jmp	DetectMemory
 .a3k4kdone:				; Again, the wonders without stack.  pasta-code.. :)
+
+
+
 	move.l	a0,d5			; Backup startaddress of memory found
 	move.l	a1,d4			; Backup endaddress of memory found
 	move.l	d1,d3			; Backup data of addresses found to registers not used
 
 
 
-
-
 	cmp.l	#0,a0			; was a0 0?  if so. no memory was found
 	beq	.det16
+
+
 	lea	FastFoundtxt,a0
 	lea	.det11,a1
 	bra	DumpSerial
 .det11:
+
+
 	move.l	d5,d1
 	lea	.det12,a2
 	bra	DumpHexLong
@@ -1438,11 +1565,13 @@ POSTDetectChipmem:
 	lea	.det14,a2
 	bra	DumpHexLong
 .det14:
+
 	lea	NewLineTxt,a0
 	lea	.det15,a1
 	bra	DumpSerial
 .det15:
 	eor.l	#$01110000,d0
+
 	bra	.fast
 
 
@@ -1679,7 +1808,9 @@ POSTDetectChipmem:
 
 
 .fast:
+
 	move.l	d3,d1
+
 
 
 
@@ -1696,12 +1827,6 @@ POSTDetectChipmem:
 	;	memdetection done
 
 
-
-
-
-
-
-
 ;	d0				; total chipmem *32
 ;	d1				; total fastmem *64
 ;	a0				; Start of Fastmemblock
@@ -1710,10 +1835,9 @@ POSTDetectChipmem:
 ;	a7				; Start of chipmem
 
 
-
 	clr.l	d7			; Be sure d7 is clear
 
-	cmp.l	#(EndData-Variables)/32768+1,d0
+	cmp.l	#(EndData-Variables)/65535+1,d0
 	bgt	.enoughchip		; ok we had enough chipmem
 					; so we are not happy with the amount of found chipmem
 
@@ -1746,8 +1870,10 @@ POSTDetectChipmem:
 .enoughfast:
 
 
+
+
 	move.l	a0,a6			; set d6 to contain the pointer to fastmem
-	move.l	d1,d4			; copy size in blocks to d2
+	move.l	d1,d4			; copy size in blocks to d4
 	asl.l	#8,d4			; Multiply  d2 with 64 to get correct number of kilobytes of fastmem.;
 	asl.l	#8,d4
 	move.l	a4,d7
@@ -1761,9 +1887,10 @@ POSTDetectChipmem:
 
 	move.l	a7,a6			; Copy pointer to first chipmem found to a6
 	move.l	d0,d4			; Copy size in blocks to d2
-	asl.l	#8,d4			; Multiply d0 with 32 as it contains number of blocks of 32K
-	asl.l	#7,d4
+	asl.l	#8,d4			; Multiply d0 with 64 as it contains number of blocks of 64K
+	asl.l	#8,d4
 	sub.l	#$400,d4
+
 	move.l	a4,d7
 	btst	#0,d7			; Check if LMB was pressed during boot
 	bne	.chipLMB
@@ -1796,6 +1923,7 @@ POSTDetectChipmem:
 startcode:
 
 
+
 	move.l	a4,d7
 	btst	#2,d7
 	bne	.rmb
@@ -1825,12 +1953,111 @@ startcode:
 .base3:
 	move.l	d3,d1			; Printed workmem
 
+
+
+
 					; a6  now contains workspace
-
-
-
 	move.l	d1,d6			; Store size in d6 as Dumpserial uses d1
 	move.l	a0,a5			; Store detected mem to a1
+
+
+
+
+	lea	WorkAdrtest,a0
+	lea	.jmp1,a1
+	bra	DumpSerial
+.jmp1:
+
+
+	move.l	a6,a3			; Start to clear the workarea.. So everything is initliized correctly at start/reset
+	move.l	a6,d3
+	add.l	#EndData-V,d3
+.loopa:
+	clr.l	(a3)+
+	cmp.l	d3,a3
+	blo	.loopa			; Now we have cleared the workarea..
+
+
+
+
+
+
+	move.l	a6,a3			; Start to fill the workarea with its address
+	move.l	a6,d3
+	add.l	#EndData-V,d3
+	clr.l	d5
+
+.adrloop:
+	move.l	a3,(a3)+
+	cmp.l	d3,a3
+	blo	.adrloop			; Now we have filles the workarea..
+
+
+
+
+	move.l	a6,a5			; Start to fill the workarea with its address
+	move.l	a6,d3
+	add.l	#EndData-V,d3
+.adrtstloop:
+
+	move.l	a5,d1
+	cmp.l	(a5),d1
+	bne	.adrerr
+	add.l	#4,a5
+	cmp.l	d3,a5
+	blo	.adrtstloop			; Now we have filles the workarea..
+	bra	.adrok
+.adrerr:
+	move.l	a4,d5
+	swap	d5
+	add.w	#1,d5
+	cmp.w	#200,d5
+	bgt	.adrtoomany
+	swap	d5
+	move.l	d5,a4
+	lea	RomAdrErr,a0
+	lea	.romadr2,a1
+	bra	DumpSerial
+.romadr2:
+	move.b	$dff006,$dff180
+	TOGGLEPWRLED
+	move.l	a5,d1
+	lea	.aab,a2
+	bra	DumpHexLong
+.aab:
+	lea	.afterspace,a1
+	move.l	#" ",d1
+	bsr	DumpSerialCharacter
+.afterspace:
+	move.l	a5,d1
+	lea	.ok,a3
+	bra	DumpBinSerial
+.ok:
+	move.w	#$000,$dff180
+	add.l	#4,a5
+	bra	.adrtstloop
+
+.adrtoomany:
+	swap	d1
+	move.l	d1,a4
+.adrtoomany2:
+	lea	WorkAdrErrors,a0
+	lea	.adrdone,a1
+	bra	DumpSerial
+
+
+.adrok:	
+	lea	WORKOK,a0
+	lea	.adrdone,a1
+	bra	DumpSerial
+
+.adrdone:
+
+
+
+
+
+
  	PAROUT	#$fa			; Set code to $fa to paralellport
 	lea	parfatxt,a0		; Telling the user that memory is started to be used.
 	lea	.jmp,a1	
@@ -1838,6 +2065,23 @@ startcode:
 .jmp:
 	move.l	d6,d1
 	move.l	a5,a0			; Restore important data from fastmemdetection
+
+
+
+
+
+
+	move.l	a6,a3			; Start to clear the workarea.. So everything is initliized correctly at start/reset
+	move.l	a6,d3
+	add.l	#EndData-V,d3
+.loop:
+	clr.l	(a3)+
+	cmp.l	d3,a3
+	blo	.loop			; Now we have cleared the workarea..
+
+
+
+
 	bra	code
 
 	
@@ -2047,17 +2291,19 @@ ERRORHALT2:
 						; "real" code starts here.  we got detected memory etc.
 
 code:
+
+
 	move.l	a7,d3			; Copy start of chipmem (temporary stored in a7) do d3
 
 
-
-
-
 	move.l	a6,a7
+;kuk
 	move.l	#Endstack-Variables,d6	; set d6 to the stacksize	
 	add.l	d6,a7			; and add stacksize so we have a stack
 	move.l	a7,a6			
 	add.l	#4,a6			; make a6 first usable address AFTER stack. for variables.
+
+
 
 
 
@@ -2107,7 +2353,6 @@ code:
 ; Code in NON-ROM mode
 code:
 
-
 	move.l	$8,SaveBusError		; This time to a routine that can present more data.
 	move.l	$c,SaveAddressError
 	move.l	$10,SaveIllegalError
@@ -2148,7 +2393,7 @@ code:
 	lea	V,a6			; Set V as startaddress in non-rom mode.. the stackblock is more "nonsense"
 					; do not set any stack in this mode. it is already set.
 	move.l	#BeforeUsed,d3
-	move.l	#$40,d0			; Assume 2MB of chipem when running in non ROM mode
+	move.l	#$20,d0			; Assume 2MB of chipem when running in non ROM mode
 	move.b	#1,RASTER-V(a6)		; Set that we DO have raster
 
 
@@ -2170,7 +2415,7 @@ code:
 
 					; Before we actually do start, lets clear all used memory
 TheCode:
-						; D0 = Number of 32k chipmemblocks found
+						; D0 = Number of 64k chipmemblocks found
 						; D1 = total of fastmemblocks
 
 							; A6 = Basemem found (workmem)
@@ -2182,7 +2427,7 @@ TheCode:
 
 
 ;	clr.l	d0
-	clr.l	d1
+;	clr.l	d1
 ;	move.l	#300,d1
 	clr.l	d2
 ;	clr.l	d3
@@ -2202,16 +2447,10 @@ TheCode:
 
 
 
-
 ;.noserialturnoff:
 
-	move.l	a6,a0
-	move.l	a6,d2
-	add.l	#EndData-V,d2
-.loop:
-	move.b	#0,(a0)+
-	cmp.l	d2,a0
-	blo	.loop
+
+
 
 	move.l	d1,FastBlocksAtBoot-V(a6)	; Store the amount of fastmemblocks found at boot
 
@@ -2220,6 +2459,7 @@ TheCode:
 	clr.l	d1			; ok we had skipped fastmemtest, lets clear d1 to say that we didnt find anything
 					; real value stored above anyway
 .noskip:
+
 
 
 
@@ -2270,8 +2510,15 @@ TheCode:
 	move.b	#1,STUCKP2LMB-V(a6)
 
 
+
+
+
 .noOVLError:
 	
+
+
+
+
 
 	btst	#6,d7			; is bit6 d7 set? then we should not draw anything onscreen
 	beq	.notset
@@ -2297,9 +2544,10 @@ TheCode:
 
 	move.l	d1,TotalFast-V(a6)	; Store total fastmem detected
 	move.l	d1,BootMBFastmem-V(a6)
-	asl.l	#5,d0			; Multiply d0 with 32 as it contains number of blocks of 32K
+	asl.l	#6,d0			; Multiply d0 with 64 as it contains number of blocks of 64K
 	move.l	d3,ChipStart-V(a6)	; Write where detected chipmem starts
 	move.l	d0,TotalChip-V(a6)	; Write totalchipvalue so we know how much chipmem is detected
+
 
 
 	move.l	a6,d0			; Subtract startaddress with lowest value of detected ram
@@ -2309,7 +2557,11 @@ TheCode:
 	sub.l	d3,d0			; also subtract stacksize, now we got all usable NONUSED chipmem
 	move.l	d0,ChipUnreserved-V(a6)	; Store amount of NONRESERVED chipmem
 
-	bsr	GetHWReg		; Store HW Registers
+
+
+
+	jsr	GetHWReg		; Store HW Registers
+
 
 	move.l	ChipStart-V(a6),d1	; Get startaddress of chipmem
 	move.l	TotalChip-V(a6),d0	; Get total of chipmemblocks detected
@@ -2322,6 +2574,10 @@ TheCode:
 
 
 ;---------------------------------- This is more or less where it all starts and a system is up and running
+
+
+
+
 
 	bset	#1,$bfe001
 
@@ -13589,11 +13845,6 @@ DetectMemory:
 	move.l	(a1),d4			; read value from a1 to d4
 	move.l	(a1),d4			; read value from a1 to d4
 					; Reading several times.  as sometimes reading once will give the correct answer on bad areas.
-					
-
-	btst	#6,$bfe001		; Check if LMB is pressed
-	beq	.wearedone
-
 
 	cmp.l	d4,d2			; Compare values
 	bne	.failed			; ok failed, no working ram here.
@@ -13623,12 +13874,6 @@ DetectMemory:
 	btst	d6,d5			; scan until it isnt a 0
 	beq.s	.loopa
 .bitloop:
-	btst	#6,$bfe001		; Check if LMB is pressed
-	beq	.wearedone
-
-
-
-
 
 	bclr	d6,d5			; ok. we are at that address, lets clear first bit of that address
 	move.l	d5,a3
@@ -13680,9 +13925,6 @@ DetectMemory:
 	bne	.done
 
 .next:
-	btst	#6,$bfe001		; Check if LMB is pressed
-	beq	.wearedone
-
 
 	move.l	d0,(a1)			; put a note at the first found address. to mark this as already tagged
 	move.l	a0,4(a1)		; put a note of first block found
@@ -13690,7 +13932,6 @@ DetectMemory:
 	move.l	d1,12(a1)		; total amount of 64k blocks found
 					; Strangly enough. this seems to also write onscreen at diagrom?
 
-;	add.l	#64*1024,a1		; Add 64k for next block to test
 	add.l	#256*1024,a1		; Add 256k for next block to test
 	bra	.Detect
 .shadowdone:
@@ -13994,8 +14235,10 @@ DiskdriveTest:
 
 .nokey:	
 	cmp.b	#1,RMB
-	beq	Exit
+	beq	.Exitjump
 	bra	.no
+.Exitjump:
+	jmp	Exit
 
 .action:
 	bsr	WaitReleased
@@ -17308,6 +17551,8 @@ parfdtxt:
 	dc.b	"- Parallel Code $fd - Start of chipmemdetection",$a,$d,0
 parfctxt:
 	dc.b	"- Parallel Code $fc - Trying to find some fastmem (as no chipmem found)",$a,$d,0
+parfctxt2:
+	dc.b	"- Parallel Code $fc - Trying to find some fastmem (as requested at powerup)",$a,$d,0
 parfbtxt:
 	dc.b	"- Parallel Code $fb - Memorydetection done",$a,$d,0
 parfatxt:
@@ -17328,14 +17573,31 @@ par81txt:
 HALTTXT:
 	dc.b	"- NO MEMORY FOUND - HALTING SYSTEM",0
 
+
+WorkAdrtest:
+	dc.b	"- Testing Workarea Address-access",$a,$d,0
+
 RomAdrtest:
 	dc.b	"- Testing ROM Address-access",$a,$d,0
 RomAdrErr:
 	dc.b	$a,$d,"   - Addresserror at: ",0
 RomAdrErrors:
-	dc.b	$a,$d,27,"[31m  --  Addresserrr reading ROM, memoryhandling etc might be corrupt",$a,$d
+	dc.b	$a,$d,27,"[31m  --  Addresserror reading ROM, memoryhandling etc might be corrupt",$a,$d
+	dc.b	27,"[0m",0
+RamAdrErrors:
+	dc.b	$a,$d,27,"[31m  --  Addresserror reading CHIPRAM, marking chipram as unusable",$a,$d
 	dc.b	27,"[0m",0
 
+WorkAdrErrors:
+	dc.b	$a,$d,27,"[31m  --  Addresserror reading WORKRAM, System is unstable!",$a,$d
+	dc.b	27,"[0m",0
+
+RamAdrTest:
+	dc.b	"- Testing detected Chipmem for addresserrors",$a,$d,0
+RamAdrFill:
+	dc.b	"   - Filling memoryarea with addressdata",$a,$d,0
+RamAdrComp:
+	dc.b	"   - Checking block of ram that it contains the correct addressdata",$a,$d,0
 writeffff:
 	dc.b	"  - Test of writing word $FFFF to $400 ",0
 write00ff:
@@ -17553,6 +17815,10 @@ MinusDTxt:
 	dc.b	" - $",0	
 SPACEOK:
 	dc.b	27,"[32m   OK",27,"[0m",0
+CHIPOK:
+	dc.b	27,"[32m   CHIPMEM OK",27,"[0m",$a,$d,0
+WORKOK:
+	dc.b	27,"[32m   WORKAREA OK",27,"[0m",$a,$d,0
 SPACEFAIL:
 	dc.b	27,"[31m  FAILED",27,"[0m",$a,$d,0
 ms:
@@ -18369,9 +18635,9 @@ EmptyRowTxt:
 DetChipTxt:
 	dc.b	"Detected Chipmem: ",0
 DetMBFastTxt:
-	dc.b	"Detected Motherboard Fastmem: ",0
+	dc.b	"Detected Motherboard Fastmem (not reliable result): ",0
 BaseAdrTxt:
-	dc.b	"Basememory address: ",0
+	dc.b	"Basememory address (Start of workarea): ",0
 DetectRasterTxt:
 	dc.b	"Detecting if we have a working raster: ",0
 NoDrawTxt:
@@ -18478,8 +18744,8 @@ WTxt:
 	dc.b	$a,$d,"       Write: $",0
 RTxt:
 	dc.b	$a,$d,"        Read: $",0
-Txt32KBlock:
-	dc.b	"  Number of 32K blocks found: $",0
+Txt64KBlock:
+	dc.b	"  Number of 64K blocks found: $",0
 PassTxt:
 	dc.b	" Pass: ",0
 PinTxt:
