@@ -350,7 +350,7 @@ Begin:
 	
 	move.l	#"<",d2
 	lea	.looptst1,a0
-	bsr	Loopbacktest
+	jmp	Loopbacktest
 .looptst1:
 	move.w	#$777,$dff180		; Set screen to light grey
 	TOGGLEPWRLED
