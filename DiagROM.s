@@ -12731,6 +12731,7 @@ DoAutoconfig:
 .WriteFast:
 	move.l	a1,a0			; Set correct Expansionbase
 	move.l	d3,d1
+	move.l	#ec_BaseAddress+ExpansionRom_SIZEOF,d0
 	bsr	.WriteCard
 	rts
 .WriteNoAssign:
@@ -12745,8 +12746,6 @@ DoAutoconfig:
 
 
 .WriteCard:
-	move.l	#ec_BaseAddress+ExpansionRom_SIZEOF,d0
-
 	clr.l	d1
 	move.w	AutoConfWByte-V(a6),d1	; Get data to write
 
