@@ -12736,6 +12736,37 @@ DoAutoconfig:
 	rts
 .WriteNoAssign:
 	move.l	a1,a0			; Set correct Expansionbase
+
+.WindBackZorro				; Card was shut-up, revert next-address register.
+	move.b	AutoConfType-V(a6),d0	; Get what type of card
+	cmp.b	#1,AutoConfZorro-V(a6)	; Check if Z3 Card
+	beq	.WindBackZ3
+	cmp.b	#1,d0			; Check if Z2 ROM
+	beq	.WindBackZ2IO
+	clr.l	d0                      ; If we are here it must be a RAM Board!
+	move.b	AutoConfZ2Ram-V(a6),d0
+	swap    d0
+	sub.l   AutoConfSize-V(a6),d0
+	swap    d0	
+	move.b	d0,AutoConfZ2Ram-V(a6)
+	bra .WindBackDone
+.WindBackZ2IO:
+	clr.l	d0
+	move.b	AutoConfZ2IO-V(a6),d0
+	swap    d0
+	sub.l   AutoConfSize-V(a6),d0
+	swap    d0	
+	move.b	d0,AutoConfZ2IO-V(a6)
+	bra .WindBackDone
+.WindBackZ3:
+	clr.l	d0
+	move.w	AutoConfZ3-V(a6),d0
+	swap 	d0
+	sub.l	AutoConfSize-V(a6),d0
+	swap	d0
+	move.w	d0,AutoConfZ3-V(a6)
+
+.WindBackDone:
 	moveq	#ec_Shutup+ExpansionRom_SIZEOF,d0
 	bsr	.WriteCard		; Send shutup
 	move.l	#-2,d0
