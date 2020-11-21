@@ -1,5 +1,4 @@
-;APS0000006D0000006D0003AC0E0003B5BF0003B5BF0003B5BF0003B5BF0003B5BF0003B5BF0003B5BF
-; Ignore this under here  it is me playing with some testing!
+;APS0000002E0000002E0003CF6D0003D91E0003D91E0003D91E0003D91E0003D91E0003D91E0003D91E
 ;
 ; DiagROM by John "Chucky" Hertell
 ;
@@ -48,12 +47,14 @@ VBLT:		MACRO
 		bne.s	.vblt\@
 		ENDM
 
-HALT:		MACRO
+STOPP:		MACRO
 .halt\@
 		move.b	$dff006,$dff181
-;		btst	#6,$bfe001
-;		bne.s	.halt\@
-		bra	.halt\@
+		btst	#6,$bfe001
+		bne.s	.halt\@
+.halt2\@
+		btst	#6,$bfe001
+		beq.s	.halt2\@
 		ENDM
 
 
@@ -3126,9 +3127,9 @@ TheCode:
 
 
 	move.b	$dff006,d0		; Load value of raster
-	bsr	WaitShort
-	bsr	WaitShort
-	bsr	WaitShort
+	jsr	WaitShort
+	jsr	WaitShort
+	jsr	WaitShort
 	move.b	$dff006,d1		; Load value of raster again
 	cmp.b	d0,d1
 	beq	.noraster		; if raster was the same, We assume we have no working raster
@@ -3265,20 +3266,20 @@ TheCode:
 	        move.l  d0,-(a7)        	;gfxbase!!
 	        move.l  d0,a6
 		jsr	-456(a6)		;OwnBlitter
-		bsr	WaitLong
+		jsr	WaitLong
 
 		jsr	-228(a6)		;WaitBlit
 	        move.l  34(a6),ActiveView	;Store activeview for a clean exit
 	        sub.l   a1,a1
 
 
-		bsr	WaitLong
-		bsr	WaitLong
-		bsr	WaitLong
-		bsr	WaitLong
-		bsr	WaitLong
-		bsr	WaitLong
-		bsr	WaitLong
+		jsr	WaitLong
+		jsr	WaitLong
+		jsr	WaitLong
+		jsr	WaitLong
+		jsr	WaitLong
+		jsr	WaitLong
+		jsr	WaitLong
 
 
 
@@ -3286,11 +3287,11 @@ TheCode:
 		jsr	-270(a6)		;WaitTOF()
 		jsr	-270(a6)		;WaitTOF()
 
-		bsr	WaitLong
-		bsr	WaitLong
-		bsr	WaitLong
-		bsr	WaitLong
-		bsr	WaitLong		; Dirty code..  to get rid of issue of screen not initilized sometimes
+		jsr	WaitLong
+		jsr	WaitLong
+		jsr	WaitLong
+		jsr	WaitLong
+		jsr	WaitLong		; Dirty code..  to get rid of issue of screen not initilized sometimes
 
 
 
@@ -4588,6 +4589,42 @@ GetHex:						; Takes an ASCII and returns only valid chars for hex. (and backspa
 	rts
 	
 
+GetDec:						; Takes an ASCII and returns only valid chars for dec. (and backspace/enter)
+
+						; Input:
+						;	D0 = Char
+
+						; Output:
+						; 	D0 = Char
+	cmp.b	#"0",d0
+	blt	.nonumber
+	cmp.b	#"9",d0
+	bgt	.nonumber
+	rts
+
+.nonumber:
+	cmp.b	#8,d0
+	bne	.nobackspace
+	rts
+.nobackspace:
+	cmp.b	#$d,d0
+	bne	.checkenter
+						; we had linefeed? convert to an enter :)
+	move.b	#$a,d0
+.checkenter:
+	cmp.b	#$a,d0
+	bne	.noenter
+	rts
+.noenter:
+	cmp.b	#27,d0
+	bne	.noesc
+	rts
+.noesc:
+	move.b	#0,d0
+	rts
+	
+
+
 FixBitplane:
 ; Set bitplanes in copperlist
 ;
@@ -5417,6 +5454,32 @@ oldbindec:					; Converts a binary number to decimal textstring
 	POP
 	lea	bindecoutput-V(a6),a0
 	rts
+
+
+decbin:						; Convert a decimal string to binary number
+						; IN:
+						;	A0 = String (NO SYNTAXCHECK!)
+						; OUT:
+						;	D0 = Number in binary (16 bit number max)
+	PUSH
+	jsr	StrLen
+	move.l	#1,d7
+	clr.l	d2
+	clr.l	d1
+.loop:
+	sub.l	#1,d0				; Subtract 1 to the length
+	move.b	(a0,d0),d1			; get char from the string
+	sub.b	#"0",d1				; Subtract "0" to get the binary number
+	mulu	d7,d1				; multiply with whats in d7 to d1 to get what to add in the result
+	add.l	d1,d2				; add it to d2
+	mulu	#10,d7				; multiply 10 do d7 to get next value to add for next char
+	cmp.w	#0,d0				; are we done?
+	bne.s	.loop				; no loop
+	move.l	d2,DecBinBin-V(a6)		; write result
+	POP
+	move.l	DecBinBin-V(a6),d0		; D0 now contains the binary form of the number
+	rts
+
 
 
 hexbin:						; Converts a longword to binary.
@@ -7216,9 +7279,10 @@ CheckMemNewRow:
 
 MemTest:
 	move.b	#14,LogYpos-V(a6)		; Store first row of log
-	lea	MemTest2,a0
-	move.l	#MemTestEndcode-MemTest2,d0
+	lea	MemoryTest,a0
+	move.l	#MemTestEndcode-MemoryTest,d0
 	jsr	RunCode
+	bsr	ClearBuffer
 	bsr	WaitPressed
 	bsr	WaitReleased
 	bra	MainMenu
@@ -7226,8 +7290,69 @@ MemTest:
 
 ;----------------------------------------------------------------- "New" memorytester
 		
+MemoryTestManual:
+	bsr	MemTester
+.passloop:
+	bsr	NewPass
+	bsr	CheckIt
+	cmp.w	#1,CheckMemCancel-V(a6)
+	beq	.passquit
 
-MemTest2:
+	bra	.passloop
+.passquit:
+	rts
+	
+
+MemoryTest:
+
+
+		ifne	rommode			; if we are in rommode, do timeout code..
+
+	move.l	#$7000000,CheckMemFrom-V(a6)
+	move.l	#$7ffffff,CheckMemTo-V(a6)
+	move.l	#$400,CheckMemFrom-V(a6)
+	move.l	#$200000,CheckMemTo-V(a6)
+
+		else
+
+	move.l	#$45000000,CheckMemFrom-V(a6)	; we are not in rommode scan a area we THINK is ok!
+	move.l	#$45020000,CheckMemTo-V(a6)
+
+		endc
+
+
+	move.l	#64*1024,MEMBLOCKSIZE-V(a6)
+	bsr	MemTester
+	
+.passloop:
+	move.l	#$400,CheckMemFrom-V(a6)
+	move.l	#$200000,CheckMemTo-V(a6)
+	bsr	NewPass
+	bsr	CheckIt
+	cmp.w	#1,CheckMemCancel-V(a6)
+	beq	.passquit
+
+	move.l	#$7000000,CheckMemFrom-V(a6)
+	move.l	#$7ffffff,CheckMemTo-V(a6)
+	bsr	CheckIt
+
+	cmp.w	#1,CheckMemCancel-V(a6)
+	beq	.passquit
+
+	bra	.passloop
+.passquit:
+	rts
+
+	
+
+MemTester:
+
+	cmp.l	#1024,MEMBLOCKSIZE-V(a6)
+	bgt	.morethan1k
+	
+	move.l	#1024,MEMBLOCKSIZE-V(a6)	; we had less than 1k so set to 1K
+
+.morethan1k:
 
 	clr.l	CheckMemNoErrors-V(a6)		; Clear number of errors
 	clr.l	CheckMemAdrError2-V(a6)
@@ -7258,10 +7383,6 @@ MemTest2:
 	lea	CheckMemNo,a0
 	move.l	#7,d1
 	jsr	Print				; Print checking memory from...
-
-	move.l	MemTestPass-V(a6),d0
-	jsr	bindec
-	jsr	Print
 
 	lea	NewLineTxt,a0
 	jsr	Print
@@ -7352,67 +7473,150 @@ MemTest2:
 
 
 	clr.l	CheckMemCurrent-V(a6)
+	clr.l	CheckMemPassOK-V(a6)
+	clr.l	CheckMemPassFail-V(a6)
+
+
+	cmp.l	#0,FastStart-V(a6)		; Check if we had fastmem, if we had do not change blocksize
+	beq	.smallsize
+
+	cmp.b	#2,CPUGen-V(a6)			; Check if CPUGen is 010 or less
+	ble	.smallsize
+
+	bra	.bigsize
+
+.smallsize:
+	move.l	MEMBLOCKSIZE-V(a6),d0
+	asr.l	#3,d0				; Divide with 8, so we use a smaller blocksize for "lower end machines" making memtest faster
+						; on those slow machines.
+	move.l	d0,MEMBLOCKSIZE-V(a6)
 
 
 
-	move.l	#64*1024,MEMCHECKSIZE-V(a6)
-
-		ifne	rommode			; if we are in rommode, do timeout code..
-
-	move.l	#$7000000,CheckMemFrom-V(a6)
-	move.l	#$7ffffff,CheckMemTo-V(a6)
-
-		else
-
-	move.l	#$45000000,CheckMemFrom-V(a6)	; we are not in rommode scan a area we THINK is ok!
-	move.l	#$45020000,CheckMemTo-V(a6)
-
-		endc
+.bigsize:
 
 	clr.l	CheckMemUsable-V(a6)
+	clr.l	CheckMemPass-V(a6)		; Clear variable of number of passes
 
 
-	move.l	RunCodeStart-V(a6),d0
-	move.l	RunCodeEnd-V(a6),d3
-	move.l	CheckMemTo-V(a6),d1
-	move.l	CheckMemFrom-V(a6),d2
+	move.l	#45,d0
+	move.l	#5,d1
+	jsr	SetPos
 
-
-	cmp.l	d0,d2
-	beq	.workstart
-
-	cmp.l	d0,d1
-	ble	.nothere
-	cmp.l	d0,d2
-	bge	.nothere
-
-	sub.l	#2,d0
-	move.l	d0,CheckMemTo-V(a6)		; We was in workarea and as start wasn't it, we had it in the end, lets shorten area to scan
-	bra	.workend
-
-.workstart:
-	add.l	#2,d3				; We was in workarea as start! so lets skip area where code is in
-	move.l	d3,CheckMemFrom-V(a6)		
-
-.workend:
-	bsr	.LogLine
-	lea	CheckmemRuncode,a0
+	lea	CheckMemBlocksizeTxt,a0
 	move.l	#7,d1
 	jsr	Print
-	move.l	RunCodeStart-V(a6),d0
-	move.l	d0,d7
-	jsr	binhex
-	move.l	#6,d1
-	jsr	Print
-	lea	MinusTxt,a0
+
+	move.l	MEMBLOCKSIZE-V(a6),d0		; calculate end of block
+	divu	#1024,d0
+	swap	d0
+	clr.w	d0
+	swap	d0
+	jsr	bindec
 	move.l	#7,d1
 	jsr	Print
-	move.l	RunCodeEnd-V(a6),d0
-	jsr	binhex
+	lea	KB,a0
+	jsr	Print				; Now the "static" part of the memorytest is printed
+	
+
+	clr.l	d0
+	clr.l	d1
+	jsr	SetPos
+	lea	CheckMemA3ktxt,a0
+	move.l	#6,d1
+	jsr	Print
+	rts
+
+NewPass						; Stuff done for a new pass.
+
+	move.l	MEMBLOCKSIZE-V(a6),d0
+	move.l	d0,MEMCHECKSIZE-V(a6)
+
+	clr.l	CheckMemNoErrors-V(a6)
+	clr.w	CheckMemCancel-V(a6)
+	clr.l	CheckMemChecked-V(a6)
+	clr.l	CheckMemNonUsable-V(a6)
+	clr.l	CheckMemUsable-V(a6)
+	add.l	#1,CheckMemPass-V(a6)
+
+	move.l	#12,d0
+	move.l	#4,d1
+	jsr	SetPos
+	move.l	CheckMemPass-V(a6),d0
+	jsr	bindec
 	move.l	#6,d1
 	jsr	Print
 
-.nothere:
+
+	move.l	#16,d0
+	move.l	#13,d1
+	jsr	SetPos					; Checked
+	lea	CheckMemNumErrClearTxt,a0
+	move.l	#1,d1
+	jsr	Print
+
+	move.l	#41,d0
+	move.l	#13,d1
+	jsr	SetPos					; Usable
+	lea	CheckMemNumErrClearTxt,a0
+	move.l	#1,d1
+	jsr	Print
+
+	move.l	#70,d0
+	move.l	#13,d1
+	jsr	SetPos					; bad
+	lea	CheckMemNumErrClearTxt,a0
+	move.l	#1,d1
+	jsr	Print
+
+	bsr	LogLine
+	lea	CheckMemNewPassTxt,a0
+	move.l	#7,d1
+	jsr	Print
+	move.l	CheckMemPass-V(a6),d0
+	jsr	bindec
+	move.l	#7,d1
+	jsr	Print
+
+	rts
+
+
+LogLine:					; Sets new line of log to print at
+	PUSH
+	clr.l	d1
+	move.b	LogYpos-V(a6),d1
+	add.b	#1,d1
+	cmp.b	#31,d1
+	beq	.endline
+.setline:
+	clr.l	d0
+	jsr	SetPos
+	move.b	d1,LogYpos-V(a6)
+	POP
+	rts
+.endline:
+	move.l	#15,d0
+	jsr	DeleteLine
+	sub.b	#1,d1
+	bra	.setline
+	
+
+
+
+CheckIt:
+	move.l	MEMBLOCKSIZE-V(a6),d0
+	move.l	d0,MEMCHECKSIZE-V(a6)
+
+	bsr	.CheckWorkArea
+	bsr	.CheckCodeArea
+
+	move.l	#62,d0
+	move.l	#7,d1
+	jsr	SetPos
+
+	lea	CheckMemNumErrClearTxt,a0
+	move.l	#1,d1
+	jsr	Print
 
 
 	move.l	#-1,CheckMemOldNoErrors-V(a6)	; Store a bogusnumber at errors, to force update at first print
@@ -7420,19 +7624,157 @@ MemTest2:
 	move.l	#-1,CheckMemOldNonUsable-V(a6)
 	move.l	#-1,CheckMemOldUsable-V(a6)
 	move.l	#-1,CheckMemOldScanAdr-V(a6)
-	clr.w	CheckMemCancel-V(a6)
+	clr.l	CheckMemNoErrorsBlock-V(a6)	; Clear number of errors in this block
 
-	clr.l	CheckMemChecked-V(a6)
-	bsr	.CheckIt
+	move.w	#-1,CheckMemOldBad-V(a6)	; Lets "clear" some variables
+	clr.w	CheckMemBad-V(a6)
+	clr.w	CheckMemStatus-V(a6)
+	
+	cmp.w	#0,CheckMemCancel-V(a6)		; check if cancel is 0, if not, cancel all
+	bne	.canceltest
 
-	clr.l	CheckMemScanAdr-V(a6)
-	move.l	#-1,CheckMemOldScanAdr-V(a6)
-	clr.l	CheckMemCurrent-V(a6)
-	move.l	#64*1024,MEMCHECKSIZE-V(a6)
-	bsr	.CheckIt
+	move.l	CheckMemFrom-V(a6),d2
+	move.l	d2,CheckMemBlock-V(a6)		; Store where this block started
+
+	move.l	d2,CheckMemCurrent-V(a6)
+	bsr	.PrintMemRange			; Print range of ram to check
+
+.checkloop:
+	move.l	CheckMemCurrent-V(a6),d0
+	move.l	d0,d1
+	add.l	MEMCHECKSIZE-V(a6),d1
+	move.l	CheckMemTo-V(a6),d2
+	cmp.l	d1,d2
+	bge	.nottoolarge			; Check so we do not check outside the wanted area
+	sub.l	d0,d2
+	move.l	d2,MEMCHECKSIZE-V(a6)		; Set blocksize to fit
 
 
+
+.nottoolarge:
+
+	clr.l	CheckMemAdrError-V(a6)		; Clear addresserrormask, not sure if we should have it here. (clears every block)
+
+	bsr	.StatusUpdate
+
+	bsr	.MemChecker			; Check the memoryblock
+
+						; memory is checked here
+
+	
+	bsr	.UpdateMem			; Update the screen
+
+	jsr	GetInput
+	cmp.b	#1,BUTTON-V(a6)
+	beq	.exittest
+
+	move.l	CheckMemCurrent-V(a6),d0
+	move.l	CheckMemTo-V(a6),d1
+	move.l	CheckMemFrom-V(a6),d2
+
+.nohigh:
+
+	cmp.l	d0,d1
+	beq	.donetest
+	bgt	.checkloop			; Check if we was done, if not, loop more
+
+.donetest:
+
+	PUSH
+	move.l	CheckMemNoErrorsBlock-V(a6),d7
+
+	cmp.l	#0,d7				; check if there was errors
+	bne	.doneerr
+	add.l	#1,CheckMemPassOK-V(a6)
+	bra	.doneok
+
+
+.doneerr:
+	add.l	#1,CheckMemPassFail-V(a6)
+
+.doneok:
+	move.w	#3,CheckMemBad-V(a6)		; lets trigger  status update for log to print the size of the last block
+	bsr	.StatusUpdate
+	bsr	LogLine
+	lea	CheckMemScanEndTxt,a0		; tell it is end of block
+	move.l	#6,d1
+	jsr	Print
+	move.l	CheckMemCurrent-V(a6),d0	; where end was
+	jsr	binhex
+	jsr	Print
+	bsr	LogLine
+	lea	CheckMemTotalTxt,a0		; print out number of errors in block
+	move.l	#7,d1
+	jsr	Print
+	move.l	d7,d0
+	jsr	bindec
+	move.l	#2,d1
+	cmp.l	#0,d7				; check if we had no error
+	beq	.enderrgreen			; if so do not set color to red
+	move.l	#1,d1
+.enderrgreen
+	jsr	Print
+	lea	CheckMemTotal2Txt,a0		; tell it is end of block
+	move.l	#7,d1
+	jsr	Print
+	move.l	CheckMemAdrError2-V(a6),d7
+	move.l	d7,d0
+	jsr	bindec
+	move.l	#2,d1
+	cmp.l	#0,d7				; check if we had no error
+	beq	.enderrgreen2			; if so do not set color to red
+	move.l	#1,d1
+.enderrgreen2
+	jsr	Print
+
+	lea	CheckMemTotal3Txt,a0		; tell it is end of block
+	move.l	#7,d1
+	jsr	Print
+
+	move.l	CheckMemUsable-V(a6),d7
+	move.l	d7,d0
+	divu	#1024,d0
+	swap	d0
+	clr.w	d0
+	swap	d0
+	jsr	bindec
+	move.l	#7,d1
+	jsr	Print				; Print Usable Memory
+
+	lea	KB,a0
+	move.l	#7,d1
+	jsr	Print
+
+	move.l	#34,d0
+	move.l	#4,d1
+	jsr	SetPos
+
+	move.l	CheckMemPassOK-V(a6),d0
+	jsr	bindec
+	move.l	#2,d1
+	jsr	Print
+
+	move.l	#57,d0
+	move.l	#4,d1
+	jsr	SetPos
+	move.l	CheckMemPassFail-V(a6),d0
+	move.l	d0,d7
+	jsr	bindec
+	move.l	#2,d1
+	cmp.l	#0,d7
+	beq	.nored
+	move.l	#1,d1
+.nored:
+
+	jsr	Print
+
+	
+	
+	POP
+.canceltest
 	rts
+
+
 
 .PrintMemRange:						; Print range of memorytest
 	move.l	#21,d0
@@ -7467,6 +7809,7 @@ MemTest2:
 	cmp.l	d7,d6					; if they are the same, nothing changed so do not update
 	beq	.nomemerror
 	move.l	d7,CheckMemOldNoErrors-V(a6)
+
 
 	move.l	#63,d0
 	move.l	#7,d1
@@ -7683,91 +8026,112 @@ MemTest2:
 	rts
 
 
-.LogLine:					; Sets new line of log to print at
-	PUSH
-	clr.l	d1
-	move.b	LogYpos-V(a6),d1
-	add.b	#1,d1
-	cmp.b	#31,d1
-	beq	.endline
-.setline:
-	clr.l	d0
-	jsr	SetPos
-	move.b	d1,LogYpos-V(a6)
-	POP
-	rts
-.endline:
-	move.l	#15,d0
-	jsr	DeleteLine
-	sub.b	#1,d1
-	bra	.setline
-	
+.CheckWorkArea:					; Check if block is within workarea, if so, handle it
 
-
-.CheckIt:
-	cmp.w	#0,CheckMemCancel-V(a6)		; check if cancel is 0, if not, cancel all
-	bne	.canceltest
-
-	move.l	CheckMemFrom-V(a6),d2
-	move.l	d2,CheckMemCurrent-V(a6)
-	bsr	.PrintMemRange			; Print range of ram to check
-
-.checkloop:
-	move.l	CheckMemCurrent-V(a6),d0
-	move.l	d0,d1
-	add.l	MEMCHECKSIZE-V(a6),d1
-	move.l	CheckMemTo-V(a6),d2
-	cmp.l	d1,d2
-	bge	.nottoolarge			; Check so we do not check outside the wanted area
-	sub.l	d0,d2
-	move.l	d2,MEMCHECKSIZE-V(a6)		; Set blocksize to fit
-
-
-
-.nottoolarge:
-
-	clr.l	CheckMemAdrError-V(a6)		; Clear addresserrormask, not sure if we should have it here. (clears every block)
-
-	bsr	.MemChecker			; Check the memoryblock
-
-						; memory is checked here
-
-	bsr	.StatusUpdate
-	
-	bsr	.UpdateMem			; Update the screen
-
-	jsr	GetInput
-	cmp.b	#1,BUTTON-V(a6)
-	beq	.exittest
-
-	move.l	CheckMemCurrent-V(a6),d0
+	move.l	BaseStart-V(a6),d0
+	move.l	BaseEnd-V(a6),d3
 	move.l	CheckMemTo-V(a6),d1
 	move.l	CheckMemFrom-V(a6),d2
 
-.nohigh:
+
 
 	cmp.l	d0,d1
-	beq	.donetest
-	bgt	.checkloop			; Check if we was done, if not, loop more
+	ble	.wnothere			; d1 is lower than d0, meaning code is anove end of block
+	cmp.l	d0,d2
+	bgt	.wnothere		; d2 is larger than d0, meaning code is above start of block, meaning we are IN the block
 
-.donetest:
+					; ok code IS in our testrange. we need to solve this
+	cmp.b	#0,WorkOrder-V(a6)		; Check what order to do memhandling
+	beq	.wworkend
 
-	PUSH
-	bsr	.LogLine
-	lea	CheckMemScanEndTxt,a0
+.wworkstart:
+	add.l	#2,d3				; We was in workarea as start! so lets skip area where code is in
+	asr.l	#1,d3
+	asl.l	#1,d3				; make sure it is an even address
+
+
+	move.l	d3,CheckMemFrom-V(a6)		
+	bra	.wworkmoved
+
+.wworkend:
+	sub.l	#2,d0
+	move.l	d0,CheckMemTo-V(a6)
+
+
+.wworkmoved:
+	bsr	LogLine
+	lea	CheckMemWorkplace,a0
+	move.l	#7,d1
+	jsr	Print
+	move.l	BaseStart-V(a6),d0
+	move.l	d0,d7
+	jsr	binhex
 	move.l	#6,d1
 	jsr	Print
-	move.l	CheckMemCurrent-V(a6),d0
-	jsr	binhex
+	lea	MinusTxt,a0
+	move.l	#7,d1
 	jsr	Print
-	POP
-.canceltest
+	move.l	BaseEnd-V(a6),d0
+	jsr	binhex
+	move.l	#6,d1
+	jsr	Print
+.wnothere:
 	rts
+
+
+
+.CheckCodeArea:					; Check if block is within codearea if so, handle it
+	move.l	RunCodeStart-V(a6),d0
+	move.l	RunCodeEnd-V(a6),d3
+	move.l	CheckMemTo-V(a6),d1
+	move.l	CheckMemFrom-V(a6),d2
+
+
+
+	cmp.l	d0,d1
+	ble	.nothere			; d1 is lower than d0, meaning code is anove end of block
+	cmp.l	d0,d2
+	bgt	.nothere		; d2 is larger than d0, meaning code is above start of block, meaning we are IN the block
+
+					; ok code IS in our testrange. we need to solve this
+	cmp.b	#0,WorkOrder-V(a6)		; Check what order to do memhandling
+	beq	.workend
+
+.workstart:
+	add.l	#2,d3				; We was in workarea as start! so lets skip area where code is in
+	move.l	d3,CheckMemFrom-V(a6)		
+	bra	.workmoved
+
+.workend:
+	sub.l	#2,d0
+	move.l	d0,CheckMemTo-V(a6)
+
+
+.workmoved:
+	bsr	LogLine
+	lea	CheckMemRuncode,a0
+	move.l	#7,d1
+	jsr	Print
+	move.l	RunCodeStart-V(a6),d0
+	move.l	d0,d7
+	jsr	binhex
+	move.l	#6,d1
+	jsr	Print
+	lea	MinusTxt,a0
+	move.l	#7,d1
+	jsr	Print
+	move.l	RunCodeEnd-V(a6),d0
+	jsr	binhex
+	move.l	#6,d1
+	jsr	Print
+.nothere:
+	rts
+
 
 .exittest:
 	move.w	#1,CheckMemCancel-V(a6)
 	move.l	d0,d7
-	bsr	.LogLine
+	bsr	LogLine
 	lea	CheckMemCancelled,a0
 	move.l	#2,d1
 	jsr	Print
@@ -7802,56 +8166,198 @@ MemTest2:
 	beq	.nonewblock
 	move.l	d7,CheckMemOldScanAdr-V(a6)
 
-	bsr	.LogLine
+	bsr	LogLine
 	lea	CheckMemScanStartTxt,a0
 	move.l	#6,d1
 	jsr	Print
 	move.l	CheckMemBlock-V(a6),d0
 	jsr	binhex
 	jsr	Print
+	bra	.memok
 .nonewblock:
 
-	cmp.w	#0,CheckMemStatus-V(a6)		; Check status of memcheck
+
+
+	move.w	CheckMemBad-V(a6),d0		; did we have a statuschange of the block??
+	move.w	CheckMemOldBad-V(a6),d1
+	cmp.w	d0,d1
 	beq	.memok
+	move.w	d0,CheckMemOldBad-V(a6)		; ok we had. store it in Old so we know when there is a change again
 
-	cmp.w	#0,CheckMemBad-V(a6)		; Check if we are in a bad block
-	bne	.memok				; nope..
+	cmp.w	#-1,d1				; ok was we in the beginning of the block
+	beq	.wasatstart
 
+	cmp.w	#0,d1
+	beq	.wasnotgood
 
-	move.w	#1,CheckMemBad-V(a6)
+	cmp.w	#1,d1
+	beq	.wasnotbad
 
-	bsr	.LogLine
-	lea	CheckMemBadTxt,a0
-	move.l	#1,d1
+	cmp.w	#2,d1
+	beq	.wasnotadr
+	bra	.wasatstart
+
+.wasnotadr:
+	PUSH
+	bsr	LogLine
+	lea	CheckMemAdrEndTxt,a0
+	move.w	#1,d1
+
 	jsr	Print
-	move.l	CheckMemBlock-V(a6),d0
+	move.l	CheckMemBadAdr-V(a6),d0
+	move.l	d0,d7
 	jsr	binhex
 	jsr	Print
-	bra	.memwasbad
-.memok:
-	cmp.w	#1,CheckMemBad-V(a6)		; check if block was bad. as we are in ok mem now
-	bne.s	.memwasbad			; never mind the label,  we are ok
+	lea	MinusTxt,a0
+	jsr	Print
+	move.l	CheckMemBlockEnd-V(a6),d0
+	move.l	d0,d6
+	jsr	binhex
+	jsr	Print
+	lea	CheckMemSizeOfTxt,a0
+	jsr	Print
+	sub.l	d7,d6
+	divu	#1024,d6
+	clr.l	d0
+	move.w	d6,d0
+	jsr	bindec
+	jsr	Print
+	lea	KB,a0
+	jsr	Print
+	POP
+	
+	bra	.wasatstart
+
+
+.wasnotbad:
+	PUSH
+	bsr	LogLine
+	lea	CheckMemBadEndTxt,a0
+	move.w	#1,d1
+
+	jsr	Print
+	move.l	CheckMemBadBlock-V(a6),d0
+	move.l	d0,d7
+	jsr	binhex
+	jsr	Print
+	lea	MinusTxt,a0
+	jsr	Print
+	move.l	CheckMemBlockEnd-V(a6),d0
+	move.l	d0,d6
+	jsr	binhex
+	jsr	Print
+	lea	CheckMemSizeOfTxt,a0
+	jsr	Print
+	sub.l	d7,d6
+	divu	#1024,d6
+	clr.l	d0
+	move.w	d6,d0
+	jsr	bindec
+	jsr	Print
+	lea	KB,a0
+	jsr	Print
+	POP
+	
+	bra	.wasatstart
+
+.wasnotgood:
+	PUSH
+	bsr	LogLine
+	lea	CheckMemGoodEndTxt,a0
+	move.w	#2,d1
+	jsr	Print
+	move.l	CheckMemGoodBlock-V(a6),d0
+	move.l	d0,d7
+	jsr	binhex
+	jsr	Print
+	lea	MinusTxt,a0
+	jsr	Print
+	move.l	CheckMemBlockEnd-V(a6),d0
+	move.l	d0,d6
+	jsr	binhex
+	jsr	Print
+	lea	CheckMemSizeOfTxt,a0
+	jsr	Print
+	sub.l	d7,d6
+	divu	#1024,d6
+	clr.l	d0
+	move.w	d6,d0
+	jsr	bindec
+	jsr	Print
+	lea	KB,a0
+	jsr	Print
+	POP
+
+
+.wasatstart:
+
+	cmp.w	#0,d0				; Check if we was good (0) or bad (1)
+	beq	.memwasgood
+	cmp.w	#1,d0
+	beq	.memwasbad
+	cmp.w	#2,d0
+	beq	.memwasadrerr
+	bra	.memok
+
+.memwasgood:
+	bsr	LogLine
 	clr.w	CheckMemBad-V(a6)
 	lea	CheckMemGoodTxt,a0
 	move.w	#2,d1
 	jsr	Print
+	move.l	CheckMemBlock-V(a6),d0
+	move.l	d0,CheckMemGoodBlock-V(a6)
+	jsr	binhex
+	jsr	Print
+	move.w	#2,CheckMemOldNoErrors-V(a6)		; lets fool the badmem update some to update the bitcode correct
+	lea	CheckMemBitErrors-V(a6),a0
+	move.l	#31,d7
+.clearloop2:
+	clr.b	(a0)+
+	dbf	d7,.clearloop2
 
+
+	bra	.memok
 .memwasbad:
+	bsr	LogLine
+	clr.w	CheckMemBad-V(a6)
+	lea	CheckMemBadTxt,a0
+	move.w	#1,d1
+	jsr	Print
+	move.l	CheckMemBlock-V(a6),d0
+	move.l	d0,CheckMemBadBlock-V(a6)
+	jsr	binhex
+	jsr	Print
+	bra	.memok
+
+.memwasadrerr:
+	bsr	LogLine
+	lea	CheckMemAdrErrorTxt,a0
+	move.l	#1,d1
+	jsr	Print
+	move.l	CheckMemBlock-V(a6),d0
+	move.l	d0,CheckMemBadAdr-V(a6)
+
+	move.l	d0,CheckMemGoodBlock-V(a6)
+	jsr	binhex
+	jsr	Print
+
+
+.memok:
+
 	POP
 	rts
-
+	
 
 .MemChecker:					; Checks a block of ram
 
 	PUSH
 
-	move.l	#12,d0
-	move.l	#4,d1
-	jsr	SetPos
 
 	move.l	#18,d0
 	move.l	#5,d1
 	jsr	SetPos				; Print out whar block to handle
+
 
 	clr.w	CheckMemStatus-V(a6)		; Clear status of this block
 
@@ -7870,10 +8376,10 @@ MemTest2:
 	move.l	CheckMemCurrent-V(a6),d0
 	add.l	MEMCHECKSIZE-V(a6),d0		; calculate end of block
 	sub.l	#1,d0
+	move.l	d0,CheckMemBlockEnd-V(a6)	; Store the address of the end of this block
 	jsr	binhex
 	move.l	#3,d1
 	jsr	Print				; print it
-
 
 	clr.l	CheckMemSeed-V(a6)		; Clear the "seed" so we always start with the same
 	move.l	#190903219,CheckMemRandom1-V(a6)
@@ -7922,17 +8428,13 @@ MemTest2:
 	move.l	d6,d0				; Memcheck routine expects the data we want in d0, so copy it here
 	move.l	(a3)+,d1			; read data from memory, memcheck want it to be in d1
 
-	bset	#3,d1
-	bclr	#5,d1
-	bchg	#6,d1
-
 	bsr	MemCheck			; lets compare the memory
-
 
 	cmp.l	#0,d1				; if d1 is 0 we had 0 biterrors  we are fine!
 	beq	.testok
 
 	move.w	#1,CheckMemStatus-V(a6)		; ok we DID have an error, mark it
+	move.w	#1,CheckMemBad-V(a6)		; also set it for the logging
 .testok:
 	dbf	d3,.testloop			; loop through this block
 
@@ -7950,9 +8452,12 @@ MemTest2:
 	cmp.w	#0,CheckMemStatus-V(a6)		; If we was not ok, skip adress-errorcheck as we have bad memory anyway
 	bne	.noadrerr
 
+	move.w	#0,CheckMemBad-V(a6)		; Memory was ok, lets just be sure also tell it for the logger
 
 
-				; First lets fill the block of memory with its memoryaddress
+
+
+						; First lets fill the block of memory with its memoryaddress
 						
 	move.l	a1,a3				; to save address, copy it to a3
 	move.l	d7,d3				; and to save length, copy it to d3
@@ -8000,6 +8505,7 @@ MemTest2:
 						; ok we had an error
 	add.l	#1,CheckMemAdrError2-V(a6)	; Add to addresserrors
 	move.w	#2,CheckMemStatus-V(a6)		; mark as addresserror in the status
+	move.w	#2,CheckMemBad-V(a6)
 
 	or.l	d0,d7				; or in d0 (current address) to d7 to get a mask
 	add.l	#1,d5				; add 1 to number of errors
@@ -8022,10 +8528,6 @@ MemTest2:
 
 .noadrerr:
 
-
-
-.noppp:
-
 	move.l	MEMCHECKSIZE-V(a6),d1
 
 	move.l	d7,CheckMemAdrError-V(a6)	; Store the mask
@@ -8038,6 +8540,8 @@ MemTest2:
 	add.l	d1,CheckMemUsable-V(a6)
 	bra	.noerr
 .wehaderr:
+	add.l	d1,CheckMemNoErrors-V(a6)
+	add.l	d1,CheckMemNoErrorsBlock-V(a6)
 	add.l	d1,CheckMemNonUsable-V(a6)
 .noerr:
 	TOGGLEPWRLED
@@ -8053,7 +8557,7 @@ MemTest2:
 	beq	.nornd
 	PUSH
 
-	move.l	CheckMemSeed-V(a6),d6
+	move.l	CheckMemSeed-V(a6),d6		; TECHNICALLY this is not very random.  just doing shitload of big additions...
 	move.l	CheckMemRandom1-V(a6),d0
 	move.l	CheckMemRandom2-V(a6),d1
 	move.l	CheckMemRandom3-V(a6),d2
@@ -8086,7 +8590,6 @@ MemCheck:					; Checks 2 values from memorycheck and if not same, find out biter
 
 
 
-	add.l	#1,CheckMemNoErrors-V(a6)
 	move.w	#1,CheckMemStatus-V(a6)
 
 	PUSH
@@ -9092,6 +9595,7 @@ CheckExtendedChip:
 
 
 CheckDetectedMBMem:
+	ifeq	a1k	
 	bsr	ClearScreen
 	clr.b	nomem-V(a6)
 	clr.b	temp-V(a6)				; Clear tempvariable
@@ -9289,7 +9793,14 @@ CheckDetectedMBMem:
 	POP
 	rts
 
+	else
+
+	bra	Not1K
+
+	endc
+
 ForceExtended16MBMem:
+	ifeq	a1k
 	bsr	ClearScreen
 
 	lea	MemtestExtMBMemTxt,a0
@@ -9305,9 +9816,14 @@ ForceExtended16MBMem:
 	bsr	WaitButton
 	bra	MemtestMenu
 
+	else
+
+	bra	Not1K
+	endc
 
 
 CheckExtended16MBMem:
+	ifeq	a1k
 	bsr	ClearScreen
 
 	lea	MemtestExtMBMemTxt,a0
@@ -9322,6 +9838,11 @@ CheckExtended16MBMem:
 	bsr	CheckMemory
 	bsr	WaitButton
 	bra	MemtestMenu
+
+	else
+
+	bra	Not1K
+	endc
 
 CheckMemManual:
 	bsr	ClearScreen
@@ -9350,80 +9871,50 @@ CheckMemManual:
 
 	move.l	d0,d7
 
-	lea	MemtextManualModeTxt,a0
+	lea	MemtestManualBlockTxt,a0
 	move.l	#6,d1
 	bsr	Print
+	
 
-.loop:
-	bsr	GetChar
-	cmp.b	#0,d0
-	beq	.nochar
-
-	cmp.b	#$1b,d0
-	beq	.done3
-
-	bclr	#5,d0				; make it uppercase
-
-	cmp.b	#"F",d0
-	beq	.fast
-
-	cmp.b	#"S",d0
-	beq	.slow
-
-.nochar:
-	bsr	GetMouse
-	cmp.b	#1,RMB-V(a5)
-	beq	.fast
-	cmp.b	#1,LMB-V(a6)
-	bne	.loop
-
-.fast:
-	move.l	#1,d2
-	bra	.done
-
-.slow:
-	move.l	#0,d2
-	bra	.done
-
-.done:
+	lea	64,a0
+	bsr	InputDecNum
+	cmp.l	#-1,d0
+	beq	.exit
 
 
-	lea	MemtextManualShadowTxt,a0
-	move.l	#6,d1
-	bsr	Print
+	asl.l	#8,d0
+	asl.l	#2,d0			;mulu #1024
 
-.loop2:
-	bsr	GetChar
-	cmp.b	#0,d0
-	beq	.nochar2
+	move.l	d0,MEMBLOCKSIZE-V(a6)
 
-	cmp.b	#$1b,d0
-	beq	.done
 
-	bclr	#5,d0				; make it uppercase
+	cmp.l	d6,d7	
+	beq	.exit			; end and start was the same, skip all
 
-	cmp.b	#"Y",d0
-	beq	.shadow
-	bra	.done2
-.nochar2:
-	bsr	GetMouse
-	cmp.b	#1,RMB-V(a5)
-	beq	.done2
-	cmp.b	#1,LMB-V(a6)
-	bne	.loop2
+	cmp.l	d6,d7			; check if start is higher than end
+	bgt	.nothigher
 
-.shadow:
-	move.b	#1,CheckMemNoShadow-V(a6)
-	bra	.done3
+					; OK that was it. lets swap result
 
-.done2:
-	move.b	#0,CheckMemNoShadow-V(a6)
-.done3:
-	bsr	ClearScreen
+	move.l	d6,d5
+	move.l	d7,d6
+	move.l	d5,d7
 
-	move.l	d7,d1
-	move.l	d6,d0
-	bsr	CheckMemory
+.nothigher:
+
+
+	move.l	d6,CheckMemFrom-V(a6)
+	move.l	d7,CheckMemTo-V(a6)
+
+
+	move.b	#14,LogYpos-V(a6)		; Store first row of log
+	lea	MemoryTestManual,a0
+	move.l	#MemTestEndcode-MemoryTestManual,d0
+	jsr	RunCode
+	bsr	ClearBuffer
+	bsr	WaitPressed
+	bsr	WaitReleased
+	bra	MainMenu
 
 
 	bsr	WaitButton
@@ -14222,6 +14713,8 @@ Setup:
 	bra	MainMenu
 
 About:
+		ifeq	a1k
+
 	bsr	ClearScreen
 	lea	AboutTxt,a0
 	move.l	#1,d1
@@ -14236,6 +14729,9 @@ About:
 	bsr	WaitPressed
 	bsr	WaitReleased
 	bra	MainMenu
+	else
+	bra	Not1K
+	endc
 
 
 
@@ -14310,7 +14806,7 @@ OtherTest:
 	bsr	InitScreen
 	move.w	#7,MenuNumber-V(a6)
 	move.b	#1,PrintMenuFlag-V(a6)
-	bra	MainLoop
+	jmp	MainLoop
 
 
 TF1260:						; Some TF360/TF1260 Diag tests
@@ -14831,7 +15327,7 @@ oki:
 AutoConfig:	
 	ifeq	a1k
 				; Do Autoconfigmagic
-	bsr	ClearScreen
+	jsr	ClearScreen
 	move.b	#0,AutoConfMode-V(a6)		; Set that we do not want a more detailed autoconfig mode
 	bsr	DoAutoconfig
 	bsr	PrintBoards
@@ -14839,7 +15335,7 @@ AutoConfig:
 	bsr	Print
 	lea	NewLineTxt,a0
 	bsr	Print
-	bsr	ClearBuffer
+	jsr	ClearBuffer
 
 	lea	AnyKeyMouseTxt,a0
 	move.l	#3,d1
@@ -14853,7 +15349,7 @@ AutoConfig:
 
 AutoConfigDetail:				; Do Autoconfigmagic
 	ifeq	a1k
-	bsr	ClearScreen
+	jsr	ClearScreen
 	move.b	#1,AutoConfMode-V(a6)		; Set that we want a more detailed autoconfig mode
 	bsr	DoAutoconfig
 
@@ -14862,7 +15358,7 @@ AutoConfigDetail:				; Do Autoconfigmagic
 	bsr	Print
 	lea	NewLineTxt,a0
 	bsr	Print
-	bsr	ClearBuffer
+	jsr	ClearBuffer
 
 
 	lea	AnyKeyMouseTxt,a0
@@ -15969,21 +16465,21 @@ DiskdriveTest:
 	
 	move.l	#6,d0				; Show Tracknumber
 	move.l	#2,d1
-	bsr	SetPos
+	jsr	SetPos
 	lea	Track,a0
 	move.l	#3,d1
-	bsr	Print
+	jsr	Print
 	lea	Space3,a0
-	bsr	Print
+	jsr	Print
 	move.l	#13,d0
 	move.l	#2,d1
-	bsr	SetPos
+	jsr	SetPos
 
 	clr.l	d0
 	move.b	TrackNo-V(a6),d0
-	bsr	bindec
+	jsr	bindec
 	move.l	#5,d1
-	bsr	Print
+	jsr	Print
 
 	clr.l	d7				; Clear d7, if still clear after those 2 tests, nothing to update
 	move.b	$bfe001,d0
@@ -16004,143 +16500,143 @@ DiskdriveTest:
 
 	move.l	#18,d0				; Show diskside
 	move.l	#2,d1
-	bsr	SetPos
+	jsr	SetPos
 	lea	Side,a0
 	move.l	#3,d1
-	bsr	Print
+	jsr	Print
 	cmp.b	#0,SideNo-V(a6)
 	bne	.Lower
 	lea	UPPER,a0
 	move.l	#5,d1
-	bsr	Print
+	jsr	Print
 ;	bclr.b	#2,$bfd100
 
 	bra	.SideDone
 .Lower:
 	lea	LOWER,a0
 	move.l	#5,d1
-	bsr	Print
+	jsr	Print
 ;	bset.b	#2,$bfd100
 
 .SideDone:
 
 	move.l	#32,d0				; Show motorstatus
 	move.l	#2,d1
-	bsr	SetPos
+	jsr	SetPos
 	lea	Motor,a0
 	move.l	#3,d1
-	bsr	Print
+	jsr	Print
 	btst	#7,$bfd100
 	beq	.MotorIsOn
 	lea	OFF,a0
 	move.l	#5,d1
-	bsr	Print
+	jsr	Print
 	bra	.MotorDone
 .MotorIsOn:
 	lea	ON,a0
 	move.l	#5,d1
-	bsr	Print
+	jsr	Print
 
 .MotorDone:
 
 
 	move.l	#45,d0				; Show writeprotectionstatus
 	move.l	#2,d1
-	bsr	SetPos
+	jsr	SetPos
 	lea	WProtect,a0
 	move.l	#3,d1
-	bsr	Print
+	jsr	Print
 	btst	#3,$bfe001
 	beq	.nowrite
 	lea	OFF,a0
 	move.l	#2,d1
-	bsr	Print
+	jsr	Print
 	bra	.writedone
 .nowrite:
 	lea	ON,a0
 	move.l	#1,d1
-	bsr	Print
+	jsr	Print
 .writedone:
 	move.l	#64,d0				; Show disk status
 	move.l	#2,d1
-	bsr	SetPos
+	jsr	SetPos
 	lea	DiskIN,a0
 	move.l	#3,d1
-	bsr	Print
+	jsr	Print
 	btst	#2,$bfe001
 	beq	.nochange
 	lea	YES,a0
 	move.l	#2,d1
-	bsr	Print
+	jsr	Print
 	bra	.changedone
 .nochange:
 	lea	NO,a0
 	move.l	#1,d1
-	bsr	Print
+	jsr	Print
 .changedone:
 
 
 	move.l	#6,d0				; Show Tracknumber
 	move.l	#3,d1
-	bsr	SetPos
+	jsr	SetPos
 	lea	RDY,a0
 	move.l	#3,d1
-	bsr	Print
+	jsr	Print
 
 	btst	#5,$bfe001
 	bne	.nordy
 	lea	YES,a0
 	move.l	#2,d1
-	bsr	Print
+	jsr	Print
 	bra	.rdydone
 .nordy:
 	lea	NO,a0
 	move.l	#1,d1
-	bsr	Print
+	jsr	Print
 .rdydone:
 
 	move.l	#18,d0				; Show Tracknumber
 	move.l	#3,d1
-	bsr	SetPos
+	jsr	SetPos
 	lea	TRACK0,a0
 	move.l	#3,d1
-	bsr	Print
+	jsr	Print
 
 	btst	#4,$bfe001
 	bne	.notrk0
 	lea	YES,a0
 	move.l	#2,d1
-	bsr	Print
+	jsr	Print
 	bra	.trk0done
 .notrk0:
 	lea	NO,a0
 	move.l	#1,d1
-	bsr	Print
+	jsr	Print
 
 .trk0done:
 	move.l	#36,d0
 	move.l	#3,d1
-	bsr	SetPos
+	jsr	SetPos
 	lea	BFE001Txt,a0
 	move.l	#3,d1
-	bsr	Print
+	jsr	Print
 	move.b	$bfe001,d0
-	bsr	binstringbyte
+	jsr	binstringbyte
 	move.l	#6,d1
-	bsr	Print
+	jsr	Print
 
 
 	move.l	#56,d0
 	move.l	#3,d1
-	bsr	SetPos
+	jsr	SetPos
 	lea	BFD100Txt,a0
 	move.l	#3,d1
-	bsr	Print
+	jsr	Print
 
 	move.b	$bfd100,d0
-	bsr	binstringbyte
+	jsr	binstringbyte
 	move.l	#6,d1
-	bsr	Print
+	jsr	Print
 
 .noupdate:
 	bsr	PrintMenu
@@ -16529,7 +17025,7 @@ DiskdriveTest:
 
 
 .exit:
-	bra	MainMenu
+	jmp	MainMenu
 
 .decodebuffer:					; Decodes a small part of the MFM buffer to be able to print it.
 	move.l	#$55555555,d7
@@ -16830,7 +17326,7 @@ GayleExp:
 
 	bsr	WaitPressed
 .no_hw:
-	bra	MainMenu
+	jmp	MainMenu
 
 	else
 	bra	Not1K
@@ -17914,6 +18410,162 @@ InputHexNum:					; Inputs a 32 bit hexnumber
 	jsr	hexbin
 	POP
 	move.l	HexBinBin-V(a6),d0		; return the value
+	rts
+
+.putcursor:
+	PUSH
+	move.b	CheckMemManualX-V(a6),d0
+	add.b	d7,d0				; Add postion to X pos to get correct position
+	move.b	CheckMemManualY-V(a6),d1
+	jsr	SetPos
+	clr.l	d0
+	move.b	(a5,d7),d0			; Load current char from string
+	move.l	#11,d1
+	jsr	PrintChar			; Print it reversed
+	move.b	CheckMemManualX-V(a6),d0
+	add.b	d7,d0				; Add postion to X pos to get correct position
+	move.b	CheckMemManualY-V(a6),d1
+	jsr	SetPos
+	POP
+	rts	
+
+
+
+InputDecNum:					; Inputs a 32 bit hexnumber
+						; INDATA
+						;	A0 = Defualtaddress
+	PUSH
+	move.b	Xpos-V(a6),CheckMemManualX-V(a6)
+	move.b	Ypos-V(a6),CheckMemManualY-V(a6); Store X and Y positions
+
+	move.l	a0,d0				; Store the defaultaddress in d0
+	jsr	bindec				; Convert it to hex
+
+
+
+	move.l	#8,d0
+	lea	CheckMemStartAdrTxt-V(a6),a1	; Clear workspace
+
+.clearloop:
+	clr.b	(a1,d0)
+	dbf	d0,.clearloop
+	move.l	#7,d0
+
+
+
+.decloop:
+	move.b	(a0)+,d1			; Store char in d1
+	cmp.b	#0,d1				; Check if d7 is 0. if so, we will skip this
+	beq	.zero
+	move.b	d1,(a1)+			; Copy to where a1 points to
+	dbf	d0,.decloop
+.zero:
+	lea	CheckMemStartAdrTxt-V(a6),a5	; Store pointer to string at a5
+
+
+	move.l	a5,a0
+	move.l	#7,d1
+	jsr	Print				; Print it
+	jsr	StrLen				; Get Stringlength
+
+	move.l	d0,d6
+
+
+	clr.l	d7				; Clear d7, this is the current position of the string
+	sub.b	#1,d7				; Change d7 so we will force a update of cursor first time
+.loop:
+	jsr	GetMouse
+	cmp.b	#1,RMB-V(a6)
+	beq	.exit
+	cmp.b	#1,LMB-V(a6)
+	beq	.exit
+	bsr	WaitShort
+	jsr	GetChar				; Get a char from keyboard/serial
+	bsr	WaitLong
+	cmp.b	#"x",d0				; did user press X?
+	beq	.xpressed
+
+	cmp.b	#$7f,d0				; did we have backspace from serial?
+	beq	.backspace
+
+.getdec:
+	jsr	GetDec				; Strip it to hexnumbers
+	cmp.b	#0,d0				; if returned value is 0, we had no keypress
+	beq	.no
+	cmp.b	#$1b,d0				; Was ESC pressed?
+	beq	.exit				; if so, Exit
+	cmp.b	#$a,d0				; did user press enter?
+	beq	.enter				; if so, we are done
+
+
+	cmp.b	#$8,d0				; Did we have a backspace?
+	bne	.nobackspace			; no
+						; oh. we had. lets erase one char
+.backspace:
+	move.b	#$0,(a5,d6)			; Store a null at that position
+	cmp.b	#0,d6				; check if we are at the back?
+	beq	.backmax			; yes, do not remove
+	move.b	#" ",d0
+	sub.b	#1,d6				; Subtract one
+	move.b	d0,(a5,d6)			; Put char in memory
+	bra	.back
+.nobackspace:
+	cmp.b	#8,d6				; Check if we have max number of chars
+	beq	.nomore
+	move.b	d0,(a5,d6)			; Put char in memory
+	add.b	#1,d6
+
+.back:
+	move.l	#7,d1
+	jsr	PrintChar			; Print the char
+.backmax:
+.nomore:
+
+.no:	cmp.b	d6,d7				; Check if d6 and d7 is same, if not, update cursor
+	beq	.same
+	move.b	d6,d7
+	bsr	.putcursor			; Put cursor
+.same:
+	bra	.loop
+
+.exit:
+	POP
+	move.l	#-1,d0				; Show we had an exit
+	rts
+
+
+.xpressed:					; X is pressed, lets clear the whole area.
+	clr.l	d6
+
+	move.l	#7,d0
+.xloop:
+	move.b	#" ",(a5,d0)
+	dbf	d0,.xloop
+	clr.l	d7
+	bsr	.putcursor
+	lea	space8,a0
+	move.l	#7,d1
+	jsr	Print
+	clr.l	d7
+	bsr	.putcursor
+	clr.l	d6
+	clr.l	d0
+	bra.w	.getdec
+
+.enter:
+	cmp.b	#0,d6				; was cursor at 0? then we had nothing
+	beq	.exit
+	bsr	.putcursor
+	move.l	#" ",d0
+	jsr	PrintChar			; Print a space to remove the old cursor
+
+	clr.l	d6				; Clear d6, we need to check how many numbers we have
+
+
+	move.l	a5,a0
+	jsr	decbin
+	POP
+	move.l	DecBinBin-V(a6),d0		; return the value
 	rts
 
 .putcursor:
@@ -20224,7 +20876,7 @@ MemtestMenu5:
 MemtestMenu6:
 	dc.b	"6 - Complete Memorydetection",0
 MemtestMenu7:
-	dc.b	"7 - Manual memorytest",0
+	dc.b	"7 - Manual memorytest (NEW)",0
 MemtestMenu8:
 	dc.b	"8 - Manual memoryedit",0
 MemtestMenu9:
@@ -20290,16 +20942,16 @@ MemtestManualTxt:
 	dc.b	"Please enter startaddress to check from: $",0
 MemtestManualEndTxt:
 	dc.b	$a,$a,$a,"Please enter endadress to check to: $",0
-MemtextManualModeTxt:
-	dc.b	$a,$a,"Do you want to do a S)low test or a F)ast test?",0
-MemtextManualShadowTxt:
-	dc.b	$a,$a,"Do you want to disable shadowramtest? Y)es",0
-CheckmemRuncode:
+MemtestManualBlockTxt:
+	dc.b	$a,$a,$a,"Please enter blocksize of test: ",0
+CheckMemWorkplace:
+	dc.b	"DiagROM workarea is in testarea, will be skipped. Area is: ",0
+CheckMemRuncode:
 	dc.b	"Memtest workmem is in testarea, will be skipped. Area is: ",0
 CheckMemCancelled:
 	dc.b	"Memtest cancelled due to: ",0
 CheckMemNo:
-	dc.b	"Memorypass: ",0
+	dc.b	"Memorypass:            OK Passes:            With error:",0
 CheckMemRangeTxt:
 	dc.b	"Checking memory from ",1,1,1,1,1,1,1,1,1," to ",1,1,1,1,1,1,1,1,1," - Press any key/mousebutton to stop",0
 CheckMemCheckAdrTxt:	
@@ -20316,6 +20968,8 @@ CheckMemAdrWeird:
 CheckMemAdrNone:
 	dc.b	"--------  --------  --------  --------",0
 
+CheckMemA3ktxt:
+	dc.b	2,"Experimental test only! hardcoded to do 2MB Chipmem and A3k/4k 16MB Fast",0
 CheckMem16bitTxt:
 	dc.b	"On 16 bit system, high 16 bit is same as low 16 bit",$a,0
 CheckMemAdrErrTxt:
@@ -20333,10 +20987,20 @@ CheckMemUsableTxt:
 	dc.b	"Usable memory:",0	
 CheckMemNonUsableTxt:
 	dc.b	"NONUsable memory:",0
+CheckMemNewPassTxt:
+	dc.b	"--- New pass number: ",0
 CheckMemScanStartTxt:
 	dc.b	"---   Scanblock starts at: ",0
 CheckMemScanEndTxt:
 	dc.b	"---   Scanblock ends at: ",0
+CheckMemTotalTxt:
+	dc.b	"-- Total errors: ",0
+CheckMemTotal2Txt:
+	dc.b	" and total addresserrors: ",0
+CheckMemTotal3Txt:
+	dc.b	" OK memory: ",0
+CheckMemBlocksizeTxt:
+	dc.b	"Blocksize: ",0
 CheckMemFastModeTxt:
 	dc.b	"    ---   Running in Fast-Scan mode!",$a
 	dc.b	"Only one longword every 1k block is tested and no errors reported",$a
@@ -20345,6 +21009,10 @@ CheckMemFastModeTxt:
 	dc.b	"Bad block = Some bits works, most likly bad memory with biterrors",0	
 CheckMemNumErrTxt:
 	dc.b	"Number of errors:",0
+CheckMemNumErrClearTxt:
+	dc.b	"          ",0
+CheckMemGoodEndTxt:
+	dc.b	"Good Block ends, was between: ",0
 CheckMemGoodTxt:
 	dc.b	"Good Block start at ",0
 CheckMemEndAtTxt:
@@ -20353,6 +21021,12 @@ CheckMemSizeOfTxt:
 	dc.b	" with a size of ",0
 CheckMemBadTxt:
 	dc.b	"Bad Block start at ",0
+CheckMemBadEndTxt:
+	dc.b	"Bad Block ends, was between: ",0
+CheckMemAdrEndTxt:
+	dc.b	"Addresserror ends, was between: ",0
+CheckMemAdrErrorTxt:
+	dc.b	"Addresserrors starts at: ",0
 CheckMemDeadTxt:
 	dc.b	"Dead Block start at ",0
 CheckMemEditTxt:
@@ -21023,6 +21697,7 @@ NotEnoughChipTxt:
 	dc.b	"Not enough chipmem detected",$a,$a,0
 ShadowChiptxt:
 	dc.b	$a,$d,"Chipmem Shadowram detected, guess there is no more chipmem, stopping here",$a,$d,0
+	ifeq	a1k
 AboutTxt:
 	dc.b	2,"About DiagROM",0
 AboutTxt2:
@@ -21044,6 +21719,7 @@ AboutTxt2:
 	dc.b	"Serial output HIGHLY recomended: 9600 BPS, 8N1, No handshaking used!",$a,$a
 	dc.b	"Press any key or button!",0
 
+	endc
 
 bytehextxt:
 	dc.b	"000102030405060708090A0B0C0D0E0F"
@@ -21223,7 +21899,7 @@ EndRom:
 		ifeq	a1k
 	blk.b	$80000-(EndRom-START)-26,0		; Crapdata that needs to be here
 		else
-	blk.b	$10000-(EndRom-START)-26,0		; Crapdata that needs to be here
+	blk.b	$20000-(EndRom-START)-26,0		; Crapdata that needs to be here
 		endc
 EndRom2:
 	dc.l	0
@@ -21296,6 +21972,8 @@ binstringoutput:
 Color:	dc.b	0
 	EVEN
 HexBinBin:
+	dc.l	0
+DecBinBin:
 	dc.l	0
 SerialSpeed:
 	dc.w	0
@@ -21690,12 +22368,28 @@ CheckMemTo:
 	dc.l	0			; endaddress to check memory
 CheckMemStatus:
 	dc.w	0			; Should be 0 and this block was ok
+CheckMemPass:
+	dc.l	0			; Number of passes of memorycheck done
+CheckMemPassOK:
+	dc.l	0			; Number of OK passes
+CheckMemPassFail:
+	dc.l	0			; Number of failed passes
 CheckMemBad:
+	dc.w	0			; Should be 0 to be in a good block
+CheckMemOldBad:
 	dc.w	0			; Should be 0 to be in a good block
 CheckAdrBad:
 	dc.w	0			; Should be 0 to be in a good addressblock
 CheckMemBlock: 
 	dc.l	0			; Address of start of this block
+CheckMemBlockEnd:
+	dc.l	0			; Address of end of this block
+CheckMemGoodBlock:
+	dc.l	0			; Will state where good block started.
+CheckMemBadBlock:
+	dc.l	0			; Will state where the bad block started.
+CheckMemBadAdr:
+	dc.l	0			; Will sstate where the bad block of addresserrors starts.
 CheckMemCurrent: 
 	dc.l	0			; current address to check
 CheckMemChecked:
@@ -21725,6 +22419,8 @@ CheckMemByteErrors:
 CheckMemErrors:
 	dc.l	0			; Number of errors found
 CheckMemNoErrors:
+	dc.l	0			; total of memoryerrors
+CheckMemNoErrorsBlock:
 	dc.l	0			; total of memoryerrors
 CheckMemOldNoErrors:
 	dc.l	0			; "old" errorcount
@@ -21838,6 +22534,8 @@ DebPC:	dc.l	0			; For debug..  PC for fault
 
 
 MEMCHECKSIZE:
+	dc.l	0			; size of block to do memcheck of
+MEMBLOCKSIZE:
 	dc.l	0			; size of block to do memcheck of
 
 
@@ -22090,4 +22788,3 @@ SLASK:
 startwork:
 	blk.b	64*1024,0
 endwork:
-
