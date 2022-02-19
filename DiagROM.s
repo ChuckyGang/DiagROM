@@ -1,4 +1,4 @@
-;APS0000002D0000002D00038B4D000394FE000394FE000394FE000394FE000394FE000394FE000394FE
+;APS0000002D0000002D00038B45000394F6000394F6000394F6000394F6000394F6000394F6000394F6
 
 ; DiagROM by John "Chucky" Hertell
 ;
@@ -64,7 +64,7 @@ rom_base:	equ $f80000		; Originate as if data is in ROM
 ; Then some different modes for the assembler
 
 rommode =	1				; Set to 1 if to assemble as being in ROM
-a1k =		0				; Set to 1 if to assemble as for being used on A1000 (64k memrestriction)
+a1k =		1				; Set to 1 if to assemble as for being used on A1000 (64k memrestriction)
 debug = 	0				; Set to 1 to enable some debugshit in code
 amiga = 	1 				; Set to 1 to create an amiga header to write the ROM to disk
 
@@ -9598,7 +9598,6 @@ IRQCIAIRQTest:
 	move.l	#6,d1
 	bsr	Print
 	move.l	#IRQLevTest,d0
-;	STOPP
 	move.l	d0,$64			; Set up IRQ Level 1
 	clr.w	IRQLevDone-V(a6)		; Clear variable, we let the IRQ set it. if it gets set. we have working IRQ
 	move.w	#$9000,$dff09c
@@ -14448,6 +14447,7 @@ oki:
 
 ;------------------------------------------------------------------------------------------
 
+
 AutoConfig:	
 	ifeq	a1k
 				; Do Autoconfigmagic
@@ -14465,7 +14465,7 @@ AutoConfig:
 	move.l	#3,d1
 	bsr	Print
 	bsr	WaitButton
-	bra	MemtestMenu
+	bra	MainMenu
 	else
 	bra	Not1K
 	endc
@@ -14561,9 +14561,9 @@ DoAutoconfig:
 	bsr	.ReadRom
 	cmp.b	#0,AutoConfType-V(a6)	; Check type of card, if 0, no card found
 	beq	.noz2	
-
 	lea	E_EXPANSIONBASE,a0
 	bsr	.WriteByte
+
 	add.l	#1,d6
 	cmp.l	#32,d6			; if we hit 32 boards.. something is wrong, exit
 	bgt	.toomuch
@@ -14633,7 +14633,7 @@ DoAutoconfig:
 	tst	er_Manufacturer(a2)	; Check if it is 0, if so, we have no card
 	beq	.NoCard
 
-;	move.b	er_Flags(a2),AutoConfFlag-V(a6)		; KUK
+	move.b	er_Flags(a2),AutoConfFlag-V(a6)
 
 
 	cmp.b	#0,AutoConfMode-V(a6)
@@ -14728,6 +14728,7 @@ DoAutoconfig:
 	bsr	Print
 
 	clr.l	d7			; Clear d7 to have as a variable. if changed we have extended size
+
 	btst	#5,er_Flags(a2)		; Check if Extended sizes will be used
 	beq	.readnoextsize
 	moveq.l	#1,d7			; Set d7 to 1, we have extended sizes
@@ -14963,7 +14964,8 @@ DoAutoconfig:
 	bra	.Write
 
 .Write:					; OK! we have a card, not Z3 or Z2io. it must be Z2 RAM!
-;	move.b	#1,AutoConfDone-V(a6)		; Set that we have done autoconfig	KUK
+
+	move.b	#1,AutoConfDone-V(a6)		; Set that we have done autoconfig
 	cmp.b	#0,AutoConfIllegal-V(a6)	; Check if the illegalfag was set
 	bne	.WriteNoAssign			; it was not 0, so it is set, shutdown card
 
@@ -14975,7 +14977,8 @@ DoAutoconfig:
 	move.w	er_Manufacturer(a2),(a5)+
 	move.w	er_SerialNumber(a2),(a5)+
 	move.b	er_Type(a2),(a5)+
-	move.b	AutoConfFlag-V(a6),(a5)+
+	move.b	er_Flags(a2),(a5)+
+
 
 	move.l	d1,d3				; Store the address into d3 as backup
 	move.l	#2,d1
@@ -15037,55 +15040,26 @@ DoAutoconfig:
 .WriteFast:
 	move.l	a1,a0			; Set correct Expansionbase
 	move.l	d3,d1
-	move.l	#ec_BaseAddress+ExpansionRom_SIZEOF,d0
 	bsr	.WriteCard
-	rts
+	bra	.EndWrite
+
 .WriteNoAssign:
 	move.l	a1,a0			; Set correct Expansionbase
-
-.WindBackZorro				; Card was shut-up, revert next-address register.
-	move.b	AutoConfType-V(a6),d0	; Get what type of card
-	cmp.b	#1,AutoConfZorro-V(a6)	; Check if Z3 Card
-	beq	.WindBackZ3
-	cmp.b	#1,d0			; Check if Z2 ROM
-	beq	.WindBackZ2IO
-	clr.l	d0                      ; If we are here it must be a RAM Board!
-	move.b	AutoConfZ2Ram-V(a6),d0
-	swap    d0
-	sub.l   AutoConfSize-V(a6),d0
-	swap    d0	
-	move.b	d0,AutoConfZ2Ram-V(a6)
-	bra .WindBackDone
-.WindBackZ2IO:
-	clr.l	d0
-	move.b	AutoConfZ2IO-V(a6),d0
-	swap    d0
-	sub.l   AutoConfSize-V(a6),d0
-	swap    d0	
-	move.b	d0,AutoConfZ2IO-V(a6)
-	bra .WindBackDone
-.WindBackZ3:
-	clr.l	d0
-	move.w	AutoConfZ3-V(a6),d0
-	swap 	d0
-	sub.l	AutoConfSize-V(a6),d0
-	swap	d0
-	move.w	d0,AutoConfZ3-V(a6)
-
-.WindBackDone:
-
 	moveq	#ec_Shutup+ExpansionRom_SIZEOF,d0
 	bsr	.WriteCard		; Send shutup
 	move.l	#-2,d0
-.exit:	rts
+
+.exit:
+	bra	.EndWrite
 .forceexit:
 	move.b	#1,AutoConfExit-V(a6)	; Set force exit flag
-	rts	
+.EndWrite:
+	rts				; Card is written and we are done!
 
 
 .WriteCard:
-;	move.l	#ec_BaseAddress+ExpansionRom_SIZEOF,d0
-;
+	move.l	#ec_BaseAddress+ExpansionRom_SIZEOF,d0
+
 	clr.l	d1
 	move.w	AutoConfWByte-V(a6),d1	; Get data to write
 
@@ -15135,31 +15109,26 @@ PrintBoards:
 
 	lea	AutoConfList-V(a6),a1
 	move.l	AutoConfBoards-V(a6),d0		; Get number of boards
-	
 
 	move.l	d0,d6
+	sub.l	#1,d6
 	bsr	bindec
 	move.l	#2,d1
 	bsr	Print
 
-	cmp.l	#0,d6				; Check if we had 0 boards, if so. end
-	beq	.end
-
-	sub.l	#1,d6
 	sub.l	#1,d0
-
 .loop:
 	lea	AutoConfManuTxt2,a0
 	bsr	Print
 	clr.l	d0
-	move.w	(a1)+,d0
+	move.w	(a1)+,d0			; Get manufacturer
 	bsr	bindec
 	bsr	Print
 
 	lea	SlashTxt,a0
 	bsr	Print
 
-	move.w	(a1)+,d0
+	move.w	(a1)+,d0			; Get Serialno
 	bsr	bindec
 	bsr	Print
 
@@ -15167,13 +15136,17 @@ PrintBoards:
 	bsr	Print
 
 	clr.l	d0
-	move.b	(a1)+,d0
+	move.b	(a1)+,d0			; Get type
+	move.b	(a1)+,d5			;get Flag
+
+	move.b	d0,d7			; Store d0 into d7 for future use
 
 	and.b	#$c0,d0			; Strip out all except top 2 bits
 	cmp.b	#$c0,d0
 	beq	.readz2
 	lea	III,a0
 	move.l	#6,d1
+	bset	#2,d7			; to fool print that we are not io
 	bsr	Print
 	bra	.readz3
 .readz2:
@@ -15185,13 +15158,7 @@ PrintBoards:
 	lea	SpaceTxt,a0
 	bsr	Print
 
-
-	clr.l	d0
-	move.b	(a1)+,d0
-	move.l	d0,d5
-
-	move.l	d5,d0
-	btst	#5,d0		; Check if it is Linked to system pool (RAM)
+	btst	#2,d7
 	beq	.readnomem
 	lea	RAMTxt,a0
 	bsr	Print
@@ -15205,9 +15172,9 @@ PrintBoards:
 	bsr	Print
 
 
-	move.l	d5,d0
+	move.l	d7,d0			; Restore d7 to d0 to handle what size we have
 	clr.l	d7			; Clear d7 to have as a variable. if changed we have extended size
-	btst	#5,d0			; Check if Extended sizes will be used
+	btst	#5,d5			; Check if Extended sizes will be used
 	beq	.readnoextsize
 	moveq.l	#1,d7			; Set d7 to 1, we have extended sizes
 .readnoextsize:
@@ -15241,12 +15208,6 @@ PrintBoards:
 	bsr	Print	
 	
 	dbf	d6,.loop
-.end:
-	lea	AutoConfAllTxt,a0
-	move.l	#6,d1
-	bsr	Print
-
-
 
 	rts
 	else
@@ -15255,8 +15216,8 @@ PrintBoards:
 	
 
 
+
 Detectallmemory:
-;Detectmem:
 	jsr	ClearScreen
 	move.w	#"RN",DetectMemRnd-V(a6)	; "put in RN" at detectMemRnd to have some data
 	add.w	#1,DetectMemRnd+2-V(a6)		; Increase by 1 to have a number that changes every call
@@ -21924,13 +21885,15 @@ AutoConfFlag:
 AutoConfBoards:
 	dc.l	0			; How many boards are autoconfigured.
 AutoConfList:				; Structure Manu.w Serial.W
-	blk.b	14*33,0			; Store data fore 33 boards
+	blk.l	14*33,0			; Store data for 33 boards
 AutoConfMode:
 	dc.b	0			; if set to anything but 0, a detailed (and more manual) autoconfig will be done.
 	EVEN
 AutoConfBuffer:
 	blk.b	20,0			; Autoconfigbuffer.
 	EVEN
+AutoConfShutD:
+	dc.b	0			; of not 0, we had a shutdown of a card
 AutoConfZ2Ram:
 	dc.b	0			; AutoConf where to config ram to next Z2 card
 AutoConfZ2IO:
@@ -21943,6 +21906,16 @@ AutoConfType:
 					; 1 = ROM
 					; 2 = RAM
 					; 3 = Z2Space, not RAM
+
+BackupAutoConfZ2Ram:
+	dc.b	0			; AutoConf where to config ram to next Z2 card
+BackupAutoConfZ2IO:
+	dc.b	0			; AutoConf where to config rom to next Z2 card
+	EVEN
+BackupAutoConfZ3:
+	dc.w	0			; AutoConf where to config to next Z3 card
+
+
 AutoConfExit:
 	dc.b	0			; If anything than 0, force exit of loop
 AutoConfIllegal:
@@ -21956,6 +21929,10 @@ AutoConfWByte:
 	dc.w	0			; "Byte" to write to autoconfigboards (Word for Z3)
 AutoConfAddr:
 	dc.l	0			; Address to configure board to.
+AutoConfFrom:
+	dc.l	0
+AutoConfTo:
+	dc.l	0
 Bpl1str:
 	dc.l	0			; Space for the "BPL1" string
 Bpl1:
