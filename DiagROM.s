@@ -1,4 +1,4 @@
-;APS0000002D0000002D00038B45000394F6000394F6000394F6000394F6000394F6000394F6000394F6
+;APS0000002D0000002D00038F9400039945000399450003994500039945000399450003994500039945
 
 ; DiagROM by John "Chucky" Hertell
 ;
@@ -64,7 +64,7 @@ rom_base:	equ $f80000		; Originate as if data is in ROM
 ; Then some different modes for the assembler
 
 rommode =	1				; Set to 1 if to assemble as being in ROM
-a1k =		1				; Set to 1 if to assemble as for being used on A1000 (64k memrestriction)
+a1k =		0				; Set to 1 if to assemble as for being used on A1000 (64k memrestriction)
 debug = 	0				; Set to 1 to enable some debugshit in code
 amiga = 	1 				; Set to 1 to create an amiga header to write the ROM to disk
 
@@ -2849,6 +2849,7 @@ code:
 	move.l	#Trap,$b8
 	move.l	#Trap,$bc
 	move.b	#0,DISPAULA-V(a6)
+
 	TOGGLEPWRLED
 
 
@@ -2856,6 +2857,8 @@ code:
 
 ; Code in NON-ROM mode
 code:
+
+
 
 	move.l	$8,SaveBusError		; This time to a routine that can present more data.
 	move.l	$c,SaveAddressError
@@ -2913,6 +2916,16 @@ code:
 	endc
 		
 ; Normal code
+
+	ifeq	rommode			; if we are in rommode, disable serial output
+
+;	move.b	#1,NoSerial-V(a6)
+
+	move.l	a4,d0
+	bset	#7,d0
+	move.l	d0,a4
+
+	endc
 
 ;	Put initstuff here that consumes time, so user have time to read text on console
 
@@ -3291,7 +3304,6 @@ TheCode:
 
 	ifeq	rommode
 
-
 	clr.l	d0
 	clr.l	d1
 	clr.l	d2
@@ -3320,12 +3332,12 @@ TheCode:
 
 
 		jsr	WaitLong
-		jsr	WaitLong
-		jsr	WaitLong
-		jsr	WaitLong
-		jsr	WaitLong
-		jsr	WaitLong
-		jsr	WaitLong
+;		jsr	WaitLong
+;		jsr	WaitLong
+;		jsr	WaitLong
+;		jsr	WaitLong
+;		jsr	WaitLong
+;		jsr	WaitLong
 
 
 
@@ -3334,10 +3346,10 @@ TheCode:
 		jsr	-270(a6)		;WaitTOF()
 
 		jsr	WaitLong
-		jsr	WaitLong
-		jsr	WaitLong
-		jsr	WaitLong
-		jsr	WaitLong		; Dirty code..  to get rid of issue of screen not initilized sometimes
+;		jsr	WaitLong
+;		jsr	WaitLong
+;		jsr	WaitLong
+;		jsr	WaitLong		; Dirty code..  to get rid of issue of screen not initilized sometimes
 
 
 
@@ -3350,7 +3362,6 @@ TheCode:
 		lea	V,a6
 		move.l	d0,sysstack
 
-		
 
 	endc
 
@@ -7972,8 +7983,9 @@ FAN:
 	move.b	#12,(a0)+
 	move.b	#1,(a0)+
 	move.b	#0,(a0)+
- 
+
 	bsr	.setvar
+
 .loop:
 	bsr	.Playaudio
 
@@ -7997,6 +8009,8 @@ FAN:
 	
 	lea	AudioSimpleWaveKeys,a5		; Load list of keys in menu
 	clr.l	d0				; Clear d0, this is selected item in list
+
+
 
 .keyloop:
 	move.b	(a5)+,d3				; Read item
@@ -8044,7 +8058,7 @@ FAN:
 .no:
 	move.b	MenuPos-V(a6),d0
 	cmp.b	#4,d0				; Check if we are on the line for volume
-	bne.s	.novol
+	bne.w	.novol
 .volume:
 	cmp.b	#0,AudioVolSelect-V(a6)		; Have volume been selected before?
 	bne	.yesselected
@@ -8115,9 +8129,11 @@ FAN:
 	move.w	#3,(a1)+
 	move.l	a2,(a1)+	
 	PUSH	
+
 	bsr	bindec
 	move.l	#7,d0				; Lets copy output to a safe location
 	move.l	#"    ",(a2)
+
 .setvarloop:
 	move.b	(a0)+,d7
 	cmp.b	#0,d7				; end of string?
@@ -8126,6 +8142,7 @@ FAN:
 	dbf	d0,.setvarloop
 .decdone:
 	POP
+
 	add.l	#1,a0	
 	move.w	#2,(a1)+			; Write color
 	lea	AudSimpWave-V(a6),a2
@@ -9817,6 +9834,9 @@ IRQCIATest:
 	lea	CIATestTxt2,a0
 	move.w	#2,d1
 	bsr	Print
+	lea	DoesNotWorkTxt,a0
+	move.w	#1,d1
+	bsr	Print
 .loop:
 	bsr	GetInput
 	cmp.b	#$1b,GetCharData-V(a6)
@@ -9983,7 +10003,7 @@ IRQCIATest:
 	bsr	Print
 	rts
 
-.CiaTest
+.CiaTest:
 	cmp.b	#$ff,$dff006
 	bne.s	.CiaTest
 
@@ -10351,8 +10371,8 @@ CIALevTst:
 	move.w	#$020,$dff09c			; Enable IRQ
 	move.w	#$020,$dff09c			; Enable IRQ
 	add.w	#1,Frames-V(a6)				; Add 1 to Frames so we can keep count of frames shown.
+
 							; (or VBlanks)
-;	move.w	#$f4,$dff180
 	TOGGLEPWRLED
 .no:
 	rte
@@ -10869,18 +10889,14 @@ GFXTestRGB:
 	ble	GFXtestMenu					; if so just exit (I know. bad move not to tell user)
 
 
-	move.l	d0,SHIT-V(a6)
-
-
 	move.l	d0,a2						; Put start of memory in A2
 
 	move.l	#$ffffffff,10(a2)
-;	move.l	#$ffffffff,16(a2)
 	move.l	#$ffffffff,22(a2)
+
 
 	add.l	#40,a2
 
-;	move.l	#$ffffffff,10(a2)
 	move.l	#$ffffffff,16(a2)
 	move.l	#$ffffffff,22(a2)
 
@@ -10930,10 +10946,15 @@ GFXTestRGB:
 	
 	move.b	#$18,d1						; What ROW to start colors at
 	move.l	#15,d7						; Number of colors
+	move.l	a0,SHIT-V(a6)
 .createloop:
+
 	move.l	#$0001ff00,(a0)					; Write the wait command to copperlist
 	move.b	d1,(a0)						; Replace first byte with the real row
 	add.l	#4,a0
+	move.w	#$0180,(a0)+
+	move.w	#$fff,(a0)+
+	
 	move.w	#$0182,(a0)+
 	move.w	d2,d3
 	asl.w	#8,d3						; Make color red
@@ -10947,19 +10968,56 @@ GFXTestRGB:
 	move.w	#$0186,(a0)+
 	move.w	d2,(a0)+					; Write color as blue
 
-
-	add.w	#1,d2
-	add.b	#$f,d1
-	dbf	d7,.createloop
+	add.b	#1,d1
 
 	move.l	#$0001ff00,(a0)					; Write the wait command to copperlist
 	move.b	d1,(a0)						; Replace first byte with the real row
+	add.l	#4,a0
+	move.w	#$0180,(a0)+
+	move.w	#$0,(a0)+
+
+
+
+	add.w	#1,d2
+	add.b	#$e,d1
+	dbf	d7,.createloop
+
+
+	move.l	#$0001ff00,(a0)					; Write the wait command to copperlist
+	move.b	d1,(a0)						; Replace first byte with the real row
+	add.l	#4,a0
+	move.w	#$0180,(a0)+
+	move.w	#$fff,(a0)+
+
+	add.b	#1,d1
+	move.l	#$0001ff00,(a0)					; Write the wait command to copperlist
+	move.b	d1,(a0)						; Replace first byte with the real row
+	add.l	#4,a0
+	move.w	#$0180,(a0)+
+	move.w	#$0,(a0)+
+
+	add.b	#$e,d1
+
+	move.l	#$0001ff00,(a0)					; Write the wait command to copperlist
+	move.b	d1,(a0)						; Replace first byte with the real row
+	add.l	#4,a0
+	move.w	#$0180,(a0)+
+	move.w	#$fff,(a0)+
+
+	add.b	#1,d1
+	move.l	#$0001ff00,(a0)					; Write the wait command to copperlist
+	move.b	d1,(a0)						; Replace first byte with the real row
+	add.l	#4,a0
+	move.w	#$0180,(a0)+
+	move.w	#$0,(a0)+
+
+
+;	move.l	#$0001ff00,(a0)					; Write the wait command to copperlist
+;	move.b	d1,(a0)						; Replace first byte with the real row
 
 
 	lea	InitCOP1LCH,a0
 	bsr	SendSerial
-;	move.l	a6,d0
-;	add.l	d6,d0
 
 	move.l	d0,$dff080			;Load new copperlist
 	lea	InitDONEtxt,a0
@@ -13902,7 +13960,7 @@ WaitLong:					; Wait a short time, aprox 10 rasterlines. (or exact IF we have de
 	move.w	#3,d1
 	bsr	ReadSerial			; as we have no IRQs..  read serialport just in case
 .loop2
-	move.l	#$ffff,d0			; if now.  lets try to wait some anyway.
+	move.l	#$fff,d0			; if now.  lets try to wait some anyway.
 .loop:
 	move.b	$bfe001,d2			; Dummyread from slow memory
 	move.b	$dff006,d2
@@ -13930,6 +13988,130 @@ OtherTest:
 	move.w	#7,MenuNumber-V(a6)
 	move.b	#1,PrintMenuFlag-V(a6)
 	jmp	MainLoop
+
+ShowMemAddress:
+	bsr	InitScreen
+
+	lea	ShowMemAdrTxt,a0
+	move.l	#6,d1
+	bsr	Print
+
+
+	lea	ShowMemAdrTxt2,a0
+	move.l	#6,d1
+	bsr	Print
+
+
+	lea	ShowMemAdrTxt3,a0
+	move.l	#6,d1
+	bsr	Print
+
+	lea	$0,a0
+	bsr	InputHexNum
+	cmp.l	#-1,d0
+	beq	.exit
+	move.l	d0,ShowMemAdr-V(a6)
+	bsr	binhex
+	move.l	#2,d1
+	bsr	Print
+
+	lea	ShowMemTypeTxt,a0
+	move.l	#6,d1
+	bsr	Print
+
+.Inploop:
+	jsr	GetInput
+	cmp.b	#1,BUTTON-V(a6)
+	bne	.Inploop
+
+	clr.l	d6				; clear d6 setting what type of read to do
+
+	move.b	keypressed-V(a6),d0
+	bclr	#5,d0				; make result uppercase
+	cmp.b	#"B",d0
+	beq	.byte
+
+	cmp.b	#"W",d0
+	beq	.word
+
+	cmp.b	#"L",d0
+	beq	.longword
+
+	beq	.exit
+.byte:
+	lea	ByteTxt,a0
+	bsr	Print
+	move.l	#1,d6				; Set byte read
+	bra	.next
+
+.word:
+	lea	WordTxt,a0
+	bsr	Print
+	move.l	#2,d6				; Set word read
+
+	bra	.next
+
+.longword:
+	lea	LongWordTxt,a0
+	bsr	Print
+	move.l	#3,d6				; Set longword read
+
+.next:
+
+	lea	NewLineTxt,a0
+	bsr	Print
+
+	move.l	#0,d0
+	move.l	#10,d1
+	bsr	SetPos
+
+	lea	ShowMemTxt,a0
+	move.l	#5,d1
+	bsr	Print
+
+.loopa:
+	move.l	#31,d0
+	move.l	#10,d1
+	bsr	SetPos
+	move.l	ShowMemAdr-V(a6),a0		; Get memadress and put in a0
+	clr.l	d0				; Clear d0 to be sure
+	cmp.l	#1,d6				; are we in bytemode
+	beq	.bytemode
+	cmp.l	#2,d6
+	beq	.wordmode
+	move.l	(a0),d0
+	bra	.modedone
+.bytemode:
+	move.b	(a0),d0
+	bra	.modedone
+.wordmode:
+	move.w	(a0),d0
+
+.modedone:
+	cmp.l	d0,d7				; is it same as old value?
+	beq	.same
+	move.l	d0,d7
+	cmp.l	#1,d6
+	beq	.printbyte
+	cmp.l	#2,d6
+	beq	.printword
+	bsr	binhex
+	bra	.printdone
+.printbyte:
+	bsr	binhexbyte
+	bra	.printdone
+.printword:
+	bsr	binhexword	
+.printdone:
+	move.w	#3,d1
+	bsr	Print
+.same:
+	jsr	GetInput
+	cmp.b	#1,BUTTON-V(a6)
+	bne	.loopa
+.exit:
+	bra	OtherTest	
+
 
 
 TF1260:						; Some TF360/TF1260 Diag tests
@@ -14112,10 +14294,40 @@ RTCTest:
 	jsr	ClearScreen
 
 	bsr	DevPrint
-	clr.l	RTCold-V(a6)
 
+
+	move.l	#0,d0
+	move.l	#17,d1
+	jsr	SetPos
+
+	lea	RTCadjust1,a0
+	move.l	#7,d1
+	bsr	Print
+	lea	RTCadjust10,a0
+	move.l	#7,d1
+	bsr	Print
+
+
+	move.l	#0,d0
+	move.l	#20,d1
+	jsr	SetPos
+
+	lea	RTCIrq,a0
+	move.l	#2,d1
+	bsr	Print
+	lea	RTCIrq2,a0
+	move.l	#2,d1
+	bsr	Print
+
+
+	clr.l	RTCold-V(a6)
+	clr.w	RTC1secframe-V(a6)
+	clr.w	RTC10secframe-V(a6)
+	clr.w	RTCsec-V(a6)
+	clr.w	RTCirq-V(a6)
 .loopa:
 	move.b	#8,$dc0037
+	bsr	WaitShort
 	lea	$dc0003,a1
 	clr.l	d0
 	move.b	(a1),d0
@@ -14126,9 +14338,75 @@ RTCTest:
 	asl.l	#8,d0
 	add.b	3(a1),d0			; Now we have read a longword. 68k friendly from odd address
 
+;	move.b	$dff006,$dff181
+
+
 	cmp.l	RTCold-V(a6),d0			; Check if first byte have changed.
 	beq.w	.nochange
 	move.l	d0,RTCold-V(a6)
+
+
+	add.w	#1,RTCsec-V(a6)
+	cmp.w	#10,RTCsec-V(a6)
+	bne	.sec10				; do this every 10 second
+
+	clr.w	RTCsec-V(a6)
+
+	move.w	RTC10secframe-V(a6),d0
+	cmp.w	#0,.skip10			; if we had a 0, we just started
+
+	move.w	Frames-V(a6),d1
+	move.w	d1,RTC10secframe-V(a6)
+	sub.w	d0,d1
+	clr.l	d7
+	move.w	d1,d7
+
+	move.l	#65,d0
+	move.l	#18,d1
+	jsr	SetPos
+	clr.l	d1
+	lea	FiveSpacesTxt,a0
+	bsr	Print
+
+	move.l	#65,d0
+	move.l	#18,d1
+	jsr	SetPos
+
+	move.l	d7,d0
+	bsr	bindec
+	move.l	#3,d1
+	bsr	Print
+
+
+.sec10:
+
+.skip10:
+	move.w	RTC1secframe-V(a6),d0
+	cmp.w	#0,.skip			; if we had a 0, we just started
+
+	move.w	Frames-V(a6),d1
+	move.w	d1,RTC1secframe-V(a6)
+	sub.w	d0,d1
+	clr.l	d7
+	move.w	d1,d7
+
+	move.l	#65,d0
+	move.l	#17,d1
+	jsr	SetPos
+	clr.l	d1
+	lea	FiveSpacesTxt,a0
+	bsr	Print
+
+	move.l	#65,d0
+	move.l	#17,d1
+	jsr	SetPos
+
+	move.l	d7,d0
+	bsr	bindec
+	move.l	#3,d1
+	bsr	Print
+.skip:
+
 
 	clr.l	d0
 	clr.l	d1
@@ -14142,6 +14420,7 @@ RTCTest:
 	move.l	#13,d7
 .loop:
 	move.b	#8,$dc0037
+	bsr	WaitShort
 	clr.l	d0
 	move.b	(a1),d0
 	move.b	d0,d1
@@ -14164,6 +14443,7 @@ RTCTest:
 	bsr	Print
 
 	move.b	#8,$dc0037
+	bsr	WaitShort
 
 	lea	RTCString-V(a6),a1
 	move.l	#13,d7
@@ -14194,13 +14474,53 @@ RTCTest:
 	bsr	oki
 
 
+	clr.l	d0
+
 .nochange:
 	jsr	GetInput
+	cmp.b	#1,LMB-V(a6)
+	beq.s	.irq
+	cmp.b	#" ",keyresult-V(a6)
+	beq.s	.irq
 	cmp.b	#1,BUTTON-V(a6)
 	bne	.loopa
+.end:
+	cmp.w	#0,RTCirq-V(a6)			; did we run the IRQ code?
+	beq	.noirq
 
-;	bsr	WaitButton
+	move.w	#$7fff,$dff09c			; Disable all INTREQ
+	move.w	#$7fff,$dff09a			; Disable all INTREQ
+
+	move.l	#RTEcode,$6c			; Restore IRC Vector to empty code
+
+.noirq:
+	bsr	WaitButton
 	bra	OtherTest
+
+.irq:
+	cmp.b	#1,RMB-V(a6)
+	beq.s	.end
+	cmp.w	#0,RTCirq-V(a6)			; check if no IRQ is running
+	bne	.running			; if it is go to running
+
+	move.w	#1,RTCirq-V(a6)			; set it to 1
+	
+	clr.w	Frames-V(a6)			; Clear number frames
+	clr.w	TickFrame-V(a6)
+	clr.l	Ticks-V(a6)
+
+	move.l	#CIALevTst,$6c			; Set up IRQ Level 3
+	move.w	#$c020,$dff09a			; Enable IRQ
+	move.w	#$c020,$dff09a			; Enable IRQ
+
+	move.w	#$2000,sr			; Set SR to allow IRQs
+
+	move.w	#$fff,$dff180
+
+
+
+.running:
+	bra	.loopa
 
 
 ricoh:						; RICOH chipset detected.
@@ -19457,8 +19777,9 @@ GFXColTestCopperStart:
 	dc.l	$0180000f,$01800000,$01820000,$01840000,$01860000
 	dc.l	$00e00000,$00e20000,$00e40000,$00e60000
 GFXColTestCopperWait:
-	blk.l	4*15,0
-	dc.l	$6001ff00,$01800000,$0182000,$01840000,$01860000
+	blk.l	8*15,0
+;	blk.l	3,0
+	dc.l	$01800000,$01820000,$01840000,$01860000
 	dc.l	$fffffffe	;End of copperlist
 
 GFXColTestCopperEnd:
@@ -20067,7 +20388,7 @@ MemtestMenuKey:
 	dc.b	"1","2","3","4","5","6","7","8","9","0",0
 	EVEN
 OtherTestItems:
-	dc.l	OtherTestText,OtherTestMenu1,OtherTestMenu2,OtherTestMenu3,OtherTestMenu4,0
+	dc.l	OtherTestText,OtherTestMenu1,OtherTestMenu2,OtherTestMenu3,OtherTestMenu4,OtherTestMenu5,0
 OtherTestText:
 	dc.b	2,"Other tests",$a,$a,0
 OtherTestMenu1:
@@ -20075,14 +20396,16 @@ OtherTestMenu1:
 OtherTestMenu2:
 	dc.b	"2 - Autoconfig - Detailed",0
 OtherTestMenu3:
-	dc.b	"8 - TF360/TF1260 Diag",0
+	dc.b	"3 - ShowMemAddress Content",0
 OtherTestMenu4:
+	dc.b	"8 - TF360/TF1260 Diag",0
+OtherTestMenu5:
 	dc.b	"9 - Mainmenu",0
 	EVEN
 OtherTestCode:
-	dc.l	RTCTest,AutoConfigDetail,TF1260,MainMenu
+	dc.l	RTCTest,AutoConfigDetail,ShowMemAddress,TF1260,MainMenu
 OtherTestKey:
-	dc.b	"1","2","8","9",0
+	dc.b	"1","2","3","8","9",0
 
 hextab:
 	dc.b	"0123456789ABCDEF"	; For bin->hex convertion
@@ -20488,6 +20811,14 @@ KeyBoardTestCodeTxt:
 KeyBoardTestCodeTxt2:
 	dc.b	"Scancode binary:           HEX:      Keyboardcode binary:           HEX: ",0
 
+ByteTxt:
+	dc.b 	"Byte",0
+WordTxt:
+	dc.b	"Word",0
+LongWordTxt:
+	dc.b	"Longword",0
+
+
 	ifeq	a1k
 
 
@@ -20523,6 +20854,16 @@ RTCDay:
 	dc.b	" Thursday",0
 	dc.b	"   Friday",0
 	dc.b	" Saturday",0	
+
+RTCIrq:
+	dc.b	2,"Press space/left mouse to enable IRQ Timing for RTC Adjusting",$a,0
+RTCIrq2:
+	dc.b	2,"Requires working IRQ3 Interrupt.  Both mouse to exit (or ESC)",0
+
+RTCadjust1:
+	dc.b	"Number of frames during 1 sec RTC test    (50 = PAL, 60 = NTSC): ",$a,0
+RTCadjust10:
+	dc.b	"Number of frames during 10 sec RTC test (500 = PAL, 600 = NTSC): ",$a,0
 
 	endc
 
@@ -20719,7 +21060,16 @@ TF1260NotTxt:
 	dc.b	$a,$a,"NO TF360/1260 Found, Edit not possible",$a,0
 TF1260AutoConfNotTxt:
 	dc.b	"Autoconfig isn't done. Doing a scan now",$a,0
-
+ShowMemAdrTxt:
+	dc.b	2,"Constantly monitor memaddress quit with buttonpress",$a,0
+ShowMemAdrTxt2:
+	dc.b	2,"Only useful for dev of hardware not as a functiontest",$a,0
+ShowMemAdrTxt3:
+	dc.b	$a,"Memoryaddress to monitor: $",0
+ShowMemTypeTxt:
+	dc.b	$a,"B)yte, W)ord or L)ongword (other quit)",0
+ShowMemTxt:
+	dc.b	"Monitoring content of address: ",0
 
 FlagTxt:
 	dc.b	$a,"                   -----CPUID-----| CPURev|E*****DE",0
@@ -20750,6 +21100,8 @@ SpaceTxt:
 	dc.b	" ",0
 SpacesTxt:
 	dc.b	"  ",0
+FiveSpacesTxt:
+	dc.b	"     ",0
 TenSpacesTxt:
 	dc.b	"          ",0
 ColonTxt:
@@ -20806,6 +21158,8 @@ DENISEIDTxt:
 HHPOSRTxt:
 	dc.b	"HHPOSR  ($dff1dc): ",0
 
+DoesNotWorkTxt:
+	dc.b	"THIS FUNCTION IS CURRENTLY NOT RELIABLE!",0
 SSPErrorTxt:
 	dc.b	2,"oOoooops Something went borked",0
 BusErrorTxt:
@@ -21467,6 +21821,7 @@ AudSimpWave:
 	dc.b	0
 AudSimpFilter:
 	dc.b	0	
+	EVEN
 AudSimpVolStr:
 	blk.b	10,0
 	EVEN
@@ -21514,6 +21869,14 @@ CIANtscHigh:
 	dc.l	0
 CIACtrl:
 	dc.l	0
+RTCsec:
+	dc.w	0			; Number of seconds RTC test have been running
+RTCirq:
+	dc.w	0			; 0 if IRQ is off
+RTC1secframe:
+	dc.w	0			; Number of frames in 1 second
+RTC10secframe:
+	dc.w	0			; Number of frames in 10 seconds
 RTCold:
 	dc.l	0			; How RTC first longword was last read
 RTCString:
@@ -21726,7 +22089,8 @@ TF1260IOStart:
 	dc.l	0
 TF1260IOEnd:
 	dc.l	0
-
+ShowMemAdr:
+	dc.l	0			; Address to show at showmemaddr...
 	even
 savexpos:
 	dc.b	0
