@@ -1,5 +1,5 @@
-;APS0000002D0000002D00038F9400039945000399450003994500039945000399450003994500039945
-
+;APS0000002E0000002E00038FA400039955000399550003995500039955000399550003995500039955
+;
 ; DiagROM by John "Chucky" Hertell
 ;
 
@@ -8386,20 +8386,28 @@ AudioMod:
 
 	bsr	FilterOFF
 
+
 	bsr	ClearScreen
 	lea	AudioModStatData-V(a6),a1	; Get statusvariable
+
 	clr.l	(a1)+
+	STOPP
 
 	bset	#1,(a1)+			; Set Default filter off
 	move.b	#64,(a1)+			; Set Default MasterVolume
 	clr.w	(a1)+
+
 	move.l	#-1,(a1)+
 	move.l	#-1,(a1)			; and the "former" values aswell
+
+
 						; but to something that never can happen
 						; forcing an update first run
 	lea	AudioModTxt,a0
 	move.l	#2,d1
 	bsr	Print
+
+
 
 
 	move.l	#EndMusic-Music,d0
@@ -8424,6 +8432,8 @@ AudioMod:
 	bra	.exit
 
 .enough:
+
+
 
 	move.l	d0,AudioModAddr-V(a6)		; Store address of module
 	move.l	d0,AudioModData-V(a6)
@@ -8450,7 +8460,6 @@ AudioMod:
 	lea	AudioModInitTxt,a0
 	move.l	#3,d1
 	bsr	Print
-
 
 	move.l	AudioModAddr-V(a6),a0
 	
@@ -15431,12 +15440,18 @@ PrintBoards:
 	move.l	AutoConfBoards-V(a6),d0		; Get number of boards
 
 	move.l	d0,d6
-	sub.l	#1,d6
 	bsr	bindec
 	move.l	#2,d1
 	bsr	Print
 
-	sub.l	#1,d0
+	move.l	d6,d0
+
+
+	cmp.l	#0,d0
+	beq	.printdone
+
+	sub.l	#1,d6
+	
 .loop:
 	lea	AutoConfManuTxt2,a0
 	bsr	Print
@@ -15528,7 +15543,7 @@ PrintBoards:
 	bsr	Print	
 	
 	dbf	d6,.loop
-
+.printdone:
 	rts
 	else
 	bra	Not1K
@@ -21841,6 +21856,7 @@ AudioModData:
 	dc.l	0			; Address to mt_data (pointer to mod)
 AudioVolSelect:
 	dc.b	0			; Was VOL selection in menu selected
+	EVEN
 AudioModStatData:			; Audiomod status
 	dc.b	0,0,0,0			; if channels if turned off or not (1=OFF)
 	dc.b	0			; Audiofilter
