@@ -1,4 +1,4 @@
-;APS0000002E0000002E00038FA400039955000399550003995500039955000399550003995500039955
+;APS0000002E0000002E0003939D00039D4E00039D4E00039D4E00039D4E00039D4E00039D4E00039D4E
 ;
 ; DiagROM by John "Chucky" Hertell
 ;
@@ -7085,12 +7085,12 @@ MemTesterTest:					; Does the actual memorytesting of this address
 
 
 	move.l	d2,(a0)				; write it to RAM.
+	move.l	#"CRAP",4(a0)			; Write "CRAP" to next longword. just to put crap in databus so stuck buffer will not give fale posetive
 	nop
 	nop					; Just 2 nops here.  040 etc might want this.
 
 	move.l	(a0),d3				; load from ram to d3.  BUT do it several times, just to be sure we read correct value.
 						; broken chips can report diferent values everytime, but first often the "wanted" one.
-	move.l	(a0),d3
 	move.l	(a0),d3
 	move.l	(a0),d3				; ok this shold be enough.. lets trust d3 now contain what it thinks is in memory
 
@@ -8391,7 +8391,6 @@ AudioMod:
 	lea	AudioModStatData-V(a6),a1	; Get statusvariable
 
 	clr.l	(a1)+
-	STOPP
 
 	bset	#1,(a1)+			; Set Default filter off
 	move.b	#64,(a1)+			; Set Default MasterVolume
@@ -9857,6 +9856,87 @@ IRQCIATest:
 	bne.s	.loop
 
 
+
+	clr.l	d7
+	clr.l	d6
+
+
+.aa:
+	cmp.b	#$40,$dff006
+	bne.s	.aa
+	move.w	#$fff,$dff180
+
+	move.b	$dff006,d7
+
+.l1:
+	cmp.b	$dff006,d7
+	bne.s	.l1
+	add.l	#1,d6
+
+
+	bchg	#1,$bfe001
+
+.ab:
+	cmp.b	#$80,$dff006
+	bls.s	.l1
+	move.w	#$000,$dff180
+
+
+	btst	#6,$bfe001
+	bne.s	.aa
+.ac:
+	bra	.kuk
+
+
+	move.b	$bfee01,d0
+	and.b	#%11000000,d0
+	or.b	#%00001000,d0
+	move.b	d0,$bfee01
+	move.b	#%01111111,$bfed01
+
+	clr.l	d6
+	clr.l	d5
+	move.l	#600,d7
+
+.TIME:	equ	7050/2
+	move.b	#(.TIME&$FF),$bfe401
+	move.b	#(.TIME>>8),$bfe501
+
+	move.b	$dff006,d4
+.busy_wait:
+	cmp.b	$dff006,d4
+	bne.s	.notyet
+	cmp.b	#0,d5
+	bne	.rowdone
+	add.l	#1,d6
+	move.b	#1,d5
+	bra	.rowdone
+
+.notyet:	
+	cmp.b	#0,d5
+	bne	.nonew
+	clr.b	d5
+.rowdone:
+	
+.nonew:
+	btst	#0,$bfed01
+	beq.s	.busy_wait
+	move.b	d4,$dff181
+
+	bchg	#1,$bfe001
+	bset.b	#0,$bfee01
+	dbf	d7,.busy_wait
+;	dbf	d7,busy_wait
+
+.kuk:
+
+	move.l	d6,d0
+	bsr	bindec
+	move.l	#2,d1
+	bsr	Print
+	bra	.done
+
+
 ;	lea	CIATestTxt3,a0
 ;	move.w	#4,d1
 ;	bsr	Print
@@ -9878,9 +9958,9 @@ IRQCIATest:
 	move.l	#1411000,CIANtscLow-V(a6)
 	move.l	#1417000,CIANtscHigh-V(a6)
 	bsr	.CiaTest
-
 	bsr	.CiaResult
-	
+
+	bra	.done	
 
 	lea	CIAATestBATxt,a0
 	move.l	#3,d1
@@ -9941,6 +10021,8 @@ IRQCIATest:
 	bsr	.TestTODB
 	move.l	d0,d5
 	bsr	.CiaResult
+
+.done:
 
 	jsr	ClearBuffer
 
@@ -14321,12 +14403,16 @@ RTCTest:
 	move.l	#20,d1
 	jsr	SetPos
 
+	move.b	#$8,$dc0039	; do some reset
+
 	lea	RTCIrq,a0
 	move.l	#2,d1
 	bsr	Print
 	lea	RTCIrq2,a0
 	move.l	#2,d1
 	bsr	Print
+
+	move.b	#$8,$dc0035	; more reset
 
 
 	clr.l	RTCold-V(a6)
@@ -15735,6 +15821,8 @@ DetectMemory:
 	move.l	(a3)+,d2		; Store value to test for in D2	
 
 	move.l	d2,(a1)			; Store testvalue to a1
+	move.l	#"CRAP",4(a1)		; Just to put crap at databus. so if a stuck buffer reads what is last written will get crap
+	
 	nop
 	nop
 	nop

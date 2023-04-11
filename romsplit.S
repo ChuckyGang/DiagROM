@@ -1,7 +1,4 @@
 ;APSFFD31A8FFFD31A8FFFD31A8FFFD31A8FFFD31A8FFFD31A8FFFD31A8FFFD31A8FFFD31A8F58544B4C
-t
-
-
 ; Simple program
 ; loads file "DiagROM" and saves three files:
 ; 16bit.bin - byteswapped image for burning 16 bit eproms
@@ -63,7 +60,17 @@ SIZE64K =	64*1024
 	cmp.l	#0,d0
 	bne	Error
 
+	bsr	CopyHigh
+	bsr	ByteSwap
+	lea	FilenameCD32,a0
+	bsr	SavePart	
+	movem.l	a0-a6/d0-d7,-(a7)
+	bsr	CopyLo
+	bsr	ByteSwap
+	movem.l	(a7)+,a0-a6/d0-d7
 
+	bsr	SaveRest
+	
 	lea	infilea1k,a0
 	bsr	LoadFile
 
@@ -401,6 +408,7 @@ LoadFile:					;Loads a file into memory
 	dc.b	$a,"ERROR - OUT OF MEMORY - EXITING",$a,0	
 	EVEN
 
+
 SaveFile:
 	move.l	a0,a5
 	lea	.Savetext,a0
@@ -450,6 +458,43 @@ SaveFile:
 .Errortext:
 	dc.b	$a,"ERROR SAVING FILE",$a,0
 	
+
+SavePart:
+	move.l	a0,a5
+	lea	SaveFile\.Savetext,a0
+	bsr	Print
+
+	move.l	a5,a0
+	bsr	Print
+
+	lea	SaveFile\.Savenewline,a0
+	bsr	Print
+
+	move.l	$4,a6
+	lea	Dos,a1
+	jsr	-408(a6)
+	move.l	d0,a6
+	move.l	a5,d1
+	move.l	#1006,d2
+	jsr	-30(a6)
+	beq	SaveFile\.Error
+	move.l	d0,SaveFile\.Peekare
+	move.l	d0,d1
+	move.l	workadr,d2
+	move.l	FileSize,d3
+	jsr	-48(a6)
+	rts
+SaveRest:
+	move.l	SaveFile\.Peekare,d1
+	move.l	workadr,d2
+	move.l	FileSize,d3
+	jsr	-48(a6)
+	move.l	SaveFile\.Peekare,d1
+		jsr	-36(a6)
+	clr.l	d0
+	rts
+
+
 FileSize:
 	dc.l	0
 	
@@ -510,6 +555,8 @@ Filename32hi:
 	dc.b	"diagrom/32bitHI.bin",0
 Filename32lo:
 	dc.b	"diagrom/32bitLO.bin",0
+FilenameCD32:
+	dc.b	"diagrom/CD32.bin",0
 FilenameA1kEven:
 	dc.b	"diagrom/A1kEVEN.bin",0
 FilenameA1kOdd:
@@ -517,13 +564,14 @@ FilenameA1kOdd:
 	
 
 InitTxt:
-	dc.b	"Filesplitter V0.2 by John (Chucky) Hertell",$a,$a
+	dc.b	"Filesplitter V0.3 by John (Chucky) Hertell",$a,$a
 	dc.b	"Simply reads the file indata.bin that should be a binary file for Kickstart ROM and splits it for burning",$a
 	dc.b	"This software assumes 512MB Roms and will make 32 bit roms 2x512MB files with duplicate data",$a,$a
 	dc.b	"Produces 3 files:",$a
 	dc.b	" 16bit.bin - byteswapped image for burning 16 bit eproms",$a
 	dc.b	" 32bitHI.bin - byteswapped image of high word for burning images for 32Bit",$a
-	dc.b	" 32bitLO.bin - byteswapped image of low word for burning images for 32Bit",$a,$a
+	dc.b	" 32bitLO.bin - byteswapped image of low word for burning images for 32Bit",$a
+	dc.b	" CD32.bin - byteswapped image for burning images for CD32",$a,$a
 	dc.b	"AND if DiagROMA1k file exists it also creates:",$a,$a
 	dc.b	" A1kEVEN.bin - Image for EVEN bytes",$a
 	dc.b	" A1kODD.bin - Image for ODD bytes",$a,$a,0
