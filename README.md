@@ -1,4 +1,15 @@
 # DiagROM
+
+
+Use DiagROM V2.0 instead!  This one is "dead" as no progress. no issues read anything.
+
+
+https://github.com/ChuckyGang/DiagROMV2
+
+
+
+
+
 The Amiga Diagnostic tool by John "Chucky/The Gang" Hertell.
 
 This is a open project, it replaceses the Amiga Kickstart ROMs and try to make a diagnostic of the system.
